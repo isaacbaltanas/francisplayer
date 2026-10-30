@@ -2,6 +2,28 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.9.0] - 2026-10-31
+
+### Añadido
+
+- Arrastre de archivos y carpetas completas sobre las bibliotecas.
+- Importación preparada para lotes de 1000 archivos mediante una cola de cuatro analizadores y renderizado diferido de filas.
+- Enumeración recursiva de subcarpetas y botón específico para seleccionar carpetas.
+- Deducción automática del nombre de pestaña a partir de la carpeta y de las palabras más frecuentes en los archivos.
+- Hash SHA-256 de cada archivo para evitar duplicados exactos, incluso si cambian de ubicación o nombre.
+- Comprobación opcional de integridad mediante decodificación completa con FFmpeg.
+- Cuarentena persistente para formatos no reconocidos, archivos dañados, ilegibles o sin duración válida.
+- Preescucha individual y admisión manual desde cuarentena, con advertencia visible posterior.
+- Registro por archivo de importados, duplicados y enviados a cuarentena.
+- Progreso incremental durante el análisis masivo.
+- Inclusión física de los archivos en cuarentena dentro de `Quarantine/` al guardar un proyecto `.francis`.
+- Pruebas automáticas del nombre común y de la recuperación portátil de archivos en cuarentena.
+
+### Seguridad de datos
+
+- Ningún archivo dudoso se elimina ni se descarta silenciosamente.
+- Una segunda importación incorpora únicamente archivos que todavía no existen en la biblioteca o la cuarentena.
+
 ## [0.8.0] - 2026-10-31
 
 ### Añadido

@@ -10,5 +10,7 @@ interface Window {
     exportAudio: (payload: unknown, options: unknown) => Promise<string | null>;
     cancelExport: () => Promise<boolean>;
     onExportProgress: (callback: (progress: number) => void) => () => void;
+    importPaths: (request: unknown) => Promise<any>;
+    onImportProgress: (callback: (progress: { completed: number; total: number }) => void) => () => void;
   };
 }

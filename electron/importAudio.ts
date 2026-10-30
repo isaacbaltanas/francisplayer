@@ -1,0 +1,123 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { spawn } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
+
+const audioExtensions = new Set(['.mp3', '.wav', '.wave', '.m4a', '.aac', '.flac', '.ogg', '.oga', '.opus', '.aif', '.aiff', '.wma']);
+const disposableTokens = new Set(['final', 'master', 'mix', 'mezcla', 'version', 'versión', 'audio', 'spot', 'cuña', 'promo', 'take', 'toma', 'wav', 'mp3']);
+
+export const inferCollectionName = (fileNames: string[], fallback: string) => {
+  const tokenSets = fileNames.map(name => path.basename(name, path.extname(name)).toLowerCase()
+    .replace(/\b\d{1,8}\b/g, ' ').split(/[^\p{L}\p{N}]+/u)
+    .filter(token => token.length > 1 && !disposableTokens.has(token)));
+  const counts = new Map<string, number>();
+  tokenSets.forEach(tokens => [...new Set(tokens)].forEach(token => counts.set(token, (counts.get(token) ?? 0) + 1)));
+  const threshold = Math.max(2, Math.ceil(fileNames.length * .45));
+  const common = [...counts.entries()].filter(([, count]) => count >= threshold)
+    .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 3).map(([token]) => token);
+  const selected = tokenSets[0]?.filter(token => common.includes(token)).slice(0, 3) ?? [];
+  const value = selected.length ? selected.join(' ') : path.basename(fallback);
+  return value.replace(/(^|\s)\p{L}/gu, match => match.toUpperCase()) || 'Lista importada';
+};
+
+export const enumerateFiles = (inputPaths: string[]) => {
+  const files: string[] = [];
+  const visit = (target: string) => {
+    let stat: fs.Stats;
+    try { stat = fs.statSync(target); } catch { files.push(target); return; }
+    if (stat.isDirectory()) {
+      let children: string[];
+      try { children = fs.readdirSync(target).sort((a, b) => a.localeCompare(b)); }
+      catch { files.push(target); return; }
+      children.forEach(child => visit(path.join(target, child)));
+    } else files.push(target);
+  };
+  inputPaths.forEach(visit);
+  return files;
+};
+
+const fingerprint = (filePath: string) => new Promise<string>((resolve, reject) => {
+  const hash = crypto.createHash('sha256');
+  const stream = fs.createReadStream(filePath);
+  stream.on('data', chunk => hash.update(chunk));
+  stream.on('error', reject);
+  stream.on('end', () => resolve(hash.digest('hex')));
+});
+
+const inspectAudio = (binary: string, filePath: string, verifyIntegrity: boolean) => new Promise<{ durationMs: number; valid: boolean; detail: string }>((resolve) => {
+  const args = ['-hide_banner', '-i', filePath, '-map', '0:a:0'];
+  if (!verifyIntegrity) args.push('-t', '0.05');
+  args.push('-f', 'null', '-');
+  const process = spawn(binary, args, { windowsHide: true });
+  let output = '';
+  process.stderr.on('data', chunk => { output += chunk.toString(); });
+  process.once('error', error => resolve({ durationMs: 0, valid: false, detail: error.message }));
+  process.once('exit', code => {
+    const match = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(output);
+    const durationMs = match ? Math.round((+match[1] * 3600 + +match[2] * 60 + +match[3]) * 1000) : 0;
+    const errorLine = output.split(/\r?\n/).find(line => /invalid|error|corrupt|could not|failed/i.test(line))?.trim() ?? '';
+    resolve({ durationMs, valid: code === 0 && durationMs > 0, detail: errorLine || (code === 0 ? 'OK' : `FFmpeg exit ${code}`) });
+  });
+});
+
+const parallelMap = async <T, R>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<R>) => {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(concurrency, Math.max(1, items.length)) }, async () => {
+    while (cursor < items.length) { const index = cursor++; results[index] = await work(items[index], index); }
+  });
+  await Promise.all(workers);
+  return results;
+};
+
+export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity, knownFingerprints, knownFiles, ffmpegPath, onProgress }: any) => {
+  const startedAt = new Date().toISOString();
+  const folderImport = inputPaths.some((target: string) => { try { return fs.statSync(target).isDirectory(); } catch { return false; } });
+  const files = enumerateFiles(inputPaths);
+  const known = new Set<string>(knownFingerprints || []);
+  const knownFallback = new Set((knownFiles || []).map((item: any) => `${path.resolve(item.path)}:${item.sizeBytes}`));
+  let completed = 0;
+  const results = await parallelMap(files, 4, async (filePath, index) => {
+    const finish = (result: any) => { completed += 1; onProgress?.(completed, files.length); return result; };
+    const name = path.basename(filePath);
+    let stat: fs.Stats;
+    try { stat = await fs.promises.stat(filePath); }
+    catch (error: any) { return finish({ outcome: 'quarantined', item: quarantine(kind, filePath, 0, '', 'unreadable', error.message), log: { path: filePath, name, outcome: 'quarantined', detail: error.message } }); }
+    let hash = '';
+    try { hash = await fingerprint(filePath); }
+    catch (error: any) { return finish({ outcome: 'quarantined', item: quarantine(kind, filePath, stat.size, '', 'unreadable', error.message), log: { path: filePath, name, outcome: 'quarantined', detail: error.message } }); }
+    if (known.has(hash) || knownFallback.has(`${path.resolve(filePath)}:${stat.size}`)) {
+      return finish({ outcome: 'duplicate', log: { path: filePath, name, outcome: 'duplicate', detail: 'Exact file already present' } });
+    }
+    known.add(hash);
+    if (!audioExtensions.has(path.extname(filePath).toLowerCase())) {
+      return finish({ outcome: 'quarantined', item: quarantine(kind, filePath, stat.size, hash, 'unsupported', 'Unsupported file extension'),
+        log: { path: filePath, name, outcome: 'quarantined', detail: 'Unsupported file extension' } });
+    }
+    const inspected = await inspectAudio(ffmpegPath, filePath, verifyIntegrity);
+    if (!inspected.valid) {
+      const reason = inspected.durationMs <= 0 ? 'invalidDuration' : 'corrupt';
+      return finish({ outcome: 'quarantined', item: { ...quarantine(kind, filePath, stat.size, hash, reason, inspected.detail), durationMs: inspected.durationMs },
+        log: { path: filePath, name, outcome: 'quarantined', detail: inspected.detail } });
+    }
+    return finish({ outcome: 'imported', asset: {
+      id: `${kind}-${Date.now()}-${index}-${crypto.randomUUID()}`, kind, name: path.basename(filePath, path.extname(filePath)),
+      durationMs: inspected.durationMs, sizeBytes: stat.size, path: filePath, previewUrl: pathToFileURL(filePath).href,
+      color: '#4f8cff', libraryTabId: tabId, waveform: [], fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked'
+    }, log: { path: filePath, name, outcome: 'imported', detail: verifyIntegrity ? 'Fully decoded and verified' : 'Metadata verified' } });
+  });
+  const assets = results.filter(item => item.outcome === 'imported').map(item => item.asset);
+  const quarantined = results.filter(item => item.outcome === 'quarantined').map(item => item.item);
+  const duplicates = results.filter(item => item.outcome === 'duplicate').length;
+  const fallback = inputPaths.length === 1 ? inputPaths[0] : path.dirname(inputPaths[0] || 'Lista importada');
+  return { assets, quarantined, folderImport, suggestedName: inferCollectionName(files, fallback), log: {
+    id: crypto.randomUUID(), startedAt, finishedAt: new Date().toISOString(), sourceCount: files.length,
+    importedCount: assets.length, quarantinedCount: quarantined.length, duplicateCount: duplicates, entries: results.map(item => item.log)
+  } };
+};
+
+const quarantine = (kind: string, filePath: string, sizeBytes: number, hash: string, reason: string, detail: string) => ({
+  id: `quarantine-${crypto.randomUUID()}`, kind, name: path.basename(filePath), path: filePath,
+  previewUrl: pathToFileURL(filePath).href, sizeBytes, durationMs: 0, fingerprint: hash, reason, detail, importedAt: new Date().toISOString()
+});

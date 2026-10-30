@@ -55,7 +55,18 @@ const resources = {
     stereo: 'Estéreo', mono: 'Mono', sampleRate: 'Frecuencia de muestreo', bitDepth: 'Profundidad', bitrate: 'Bitrate',
     compression: 'Compresión FLAC', normalizeLoudness: 'Normalizar sonoridad a −14 LUFS', startExport: 'EXPORTAR ARCHIVO',
     exporting: 'EXPORTANDO…', cancelExport: 'Cancelar exportación', exportComplete: 'Exportación completada',
-    exportFailed: 'No se pudo completar la exportación.'
+    exportFailed: 'No se pudo completar la exportación.',
+    addFolder: 'Añadir carpeta completa', verifyFileIntegrity: 'Comprobar integridad al importar',
+    integrityHelp: 'Decodifica cada archivo por completo. Puede tardar más, pero detecta archivos truncados o dañados.',
+    quarantine: 'Cuarentena', importLog: 'Registro de importación', protectedFiles: 'ARCHIVOS PROTEGIDOS',
+    quarantineExplanation: 'Ningún archivo se elimina. Los archivos dudosos permanecen aquí para escucharlos y decidir si se admiten manualmente.',
+    quarantineEmpty: 'No hay archivos en cuarentena', unknownDuration: 'Duración desconocida', admitFile: 'ADMITIR EN LA LISTA',
+    quarantine_unsupported: 'Formato no reconocido', quarantine_corrupt: 'Posible archivo dañado',
+    quarantine_unreadable: 'No se pudo leer', quarantine_invalidDuration: 'Duración no válida',
+    quarantineCount_one: '{{count}} archivo protegido', quarantineCount_other: '{{count}} archivos protegidos',
+    importHistory: 'HISTORIAL COMPLETO', noImportLogs: 'Todavía no hay importaciones registradas',
+    logNeverDeletes: 'Los duplicados y archivos en cuarentena siempre quedan registrados.', analyzingFiles: 'Analizando archivos…',
+    admittedWithWarning: 'Admitido manualmente sin superar la comprobación'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -110,7 +121,18 @@ const resources = {
     stereo: 'Stereo', mono: 'Mono', sampleRate: 'Sample rate', bitDepth: 'Bit depth', bitrate: 'Bitrate',
     compression: 'FLAC compression', normalizeLoudness: 'Normalize loudness to −14 LUFS', startExport: 'EXPORT FILE',
     exporting: 'EXPORTING…', cancelExport: 'Cancel export', exportComplete: 'Export complete',
-    exportFailed: 'The export could not be completed.'
+    exportFailed: 'The export could not be completed.',
+    addFolder: 'Add complete folder', verifyFileIntegrity: 'Verify integrity on import',
+    integrityHelp: 'Fully decodes every file. It may take longer, but detects truncated or damaged files.',
+    quarantine: 'Quarantine', importLog: 'Import log', protectedFiles: 'PROTECTED FILES',
+    quarantineExplanation: 'No file is deleted. Questionable files remain here so you can preview them and decide whether to admit them manually.',
+    quarantineEmpty: 'There are no quarantined files', unknownDuration: 'Unknown duration', admitFile: 'ADMIT TO LIST',
+    quarantine_unsupported: 'Unrecognized format', quarantine_corrupt: 'Possibly damaged file',
+    quarantine_unreadable: 'Could not be read', quarantine_invalidDuration: 'Invalid duration',
+    quarantineCount_one: '{{count}} protected file', quarantineCount_other: '{{count}} protected files',
+    importHistory: 'COMPLETE HISTORY', noImportLogs: 'No imports have been recorded yet',
+    logNeverDeletes: 'Duplicates and quarantined files are always recorded.', analyzingFiles: 'Analyzing files…',
+    admittedWithWarning: 'Manually admitted without passing verification'
   } }
 };
 

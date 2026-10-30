@@ -6,6 +6,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import ffmpegStatic from 'ffmpeg-static';
 import { readProjectArchive, safeProjectName, writeProjectArchive } from './projectArchive.js';
 import { buildExportPlan, codecArguments, collectProcessResult, parseProgress } from './exportAudio.js';
+import { scanImportPaths } from './importAudio.js';
 
 let mainWindow: BrowserWindow | null = null;
 let pendingProjectPath: string | null = null;
@@ -78,6 +79,12 @@ const createWindow = async () => {
 
 ipcMain.handle('project:save', (_event, payload, requestedPath?: string) => saveProject(payload, requestedPath));
 ipcMain.handle('project:open', (_event, requestedPath?: string) => openProject(requestedPath));
+ipcMain.handle('media:import-paths', async (event, request: any) => {
+  if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');
+  const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
+  return scanImportPaths({ ...request, ffmpegPath: binary,
+    onProgress: (completed: number, total: number) => event.sender.send('media:import-progress', { completed, total }) });
+});
 ipcMain.handle('audio:export', async (event, payload: any, options: any) => {
   const extensions: Record<string, string> = { wav: 'wav', mp3: 'mp3', aac: 'm4a', flac: 'flac', ogg: 'ogg', opus: 'opus' };
   const extension = extensions[options.format] ?? 'wav';

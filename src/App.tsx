@@ -9,10 +9,11 @@ import { useTimelinePlayer } from './hooks/useTimelinePlayer';
 import { AutomationEditor } from './components/AutomationEditor';
 import { TrackAutomationLane } from './components/TrackAutomationLane';
 import { ExportDialog } from './components/ExportDialog';
+import { ImportLogDialog, QuarantineDialog } from './components/ImportCenterDialog';
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
-import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, InsertionConfig, LibraryTab, MediaAsset, MediaKind, TimelineClip } from './types';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -37,7 +38,8 @@ const defaultEditingPreferences: EditingPreferences = {
   snapEnabled: true,
   snapMode: 'smart',
   snapGridMs: 1000,
-  allowAssetReuse: true
+  allowAssetReuse: true,
+  verifyFileIntegrity: true
 };
 
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
@@ -62,6 +64,8 @@ interface ProjectDocument {
   arrangement: Arrangement | null;
   automation: AutomationState | null;
   assets: MediaAsset[];
+  quarantine: QuarantineItem[];
+  importLogs: ImportLog[];
 }
 
 function BrandMark() {
@@ -96,6 +100,7 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
   onToggleLocalAutomation, onInsertionChange }: AssetListProps) {
   const { t, i18n } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
+  const folderInput = useRef<HTMLInputElement>(null);
   const visibleAssets = assets.filter(asset => asset.libraryTabId === activeTabId);
   const total = visibleAssets.reduce((sum, asset) => sum + asset.durationMs, 0);
   const handleInput = (event: ChangeEvent<HTMLInputElement>) => {
@@ -103,7 +108,12 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
     event.target.value = '';
   };
 
-  return <section className={`asset-panel ${kind}`}>
+  return <section className={`asset-panel ${kind}`} onDragOver={(event) => {
+    if (event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; }
+  }} onDrop={(event) => {
+    if (!event.dataTransfer.files.length) return;
+    event.preventDefault(); onFiles(Array.from(event.dataTransfer.files), kind, activeTabId);
+  }}>
     <div className="panel-heading">
       <div>
         <h2>{t(kind === 'music' ? 'music' : 'voices')}</h2>
@@ -127,10 +137,11 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
       <button className="add-tab" onClick={() => onAddTab(kind)} title={t('newList')}>＋</button>
     </div>
 
-    <button className="import-button" onClick={() => input.current?.click()}>
+    <div className="import-actions"><button className="import-button" onClick={() => input.current?.click()}>
       <span className="plus">＋</span>{t(kind === 'music' ? 'addMusic' : 'addVoice')}
-    </button>
+    </button><button className="folder-button" onClick={() => folderInput.current?.click()} title={t('addFolder')}>▰</button></div>
     <input ref={input} className="visually-hidden" type="file" multiple accept={acceptAudio} onChange={handleInput} />
+    <input ref={folderInput} className="visually-hidden" type="file" multiple {...({ webkitdirectory: '' } as object)} onChange={handleInput} />
     <p className="file-hint">{t('dropHint')}</p>
 
     <div className="asset-list">
@@ -154,7 +165,8 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
         <div className="asset-index">{String(index + 1).padStart(2, '0')}</div>
         <div className="asset-info">
           <strong title={asset.name}>{asset.name}</strong>
-          <span>{formatDuration(asset.durationMs)} · {formatBytes(asset.sizeBytes, i18n.language)}</span>
+          <span>{asset.durationMs ? formatDuration(asset.durationMs) : '—'} · {formatBytes(asset.sizeBytes, i18n.language)}
+            {asset.integrity === 'warning' && <b className="integrity-warning" title={t('admittedWithWarning')}> · !</b>}</span>
         </div>
         <span className={`occurrence-badge ${occurrenceCount > 0 ? 'used' : ''}`} title={t('timelineOccurrences', { count: occurrenceCount })}>{occurrenceCount}</span>
         <button className={`highlight-button ${highlighted ? 'active' : ''}`} onClick={() => onToggleHighlight(asset.id)}
@@ -284,6 +296,9 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       </div></label>
       <Toggle label={t('allowAssetReuse')} checked={editingPreferences.allowAssetReuse}
         onChange={(allowAssetReuse) => onEditingPreferencesChange({ allowAssetReuse })} />
+      <Toggle label={t('verifyFileIntegrity')} checked={editingPreferences.verifyFileIntegrity}
+        onChange={(verifyFileIntegrity) => onEditingPreferencesChange({ verifyFileIntegrity })} />
+      <p className="settings-help">{t('integrityHelp')}</p>
       <p className="settings-help">{t('snapControlHint')}</p>
     </div>}
 
@@ -548,6 +563,11 @@ export default function App() {
   const [projectPath, setProjectPath] = useState<string | undefined>();
   const [projectName, setProjectName] = useState('Proyecto sin título');
   const [exportOpen, setExportOpen] = useState(false);
+  const [quarantine, setQuarantine] = useState<QuarantineItem[]>([]);
+  const [importLogs, setImportLogs] = useState<ImportLog[]>([]);
+  const [quarantineOpen, setQuarantineOpen] = useState(false);
+  const [importLogOpen, setImportLogOpen] = useState(false);
+  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const assetsRef = useRef<MediaAsset[]>([]);
@@ -567,19 +587,47 @@ export default function App() {
     assetsRef.current.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
   }, []); // URLs are intentionally cleaned only when the app closes.
 
+  useEffect(() => window.francisDesktop?.onImportProgress(setImportProgress), []);
+
   const status = useMemo(() => arrangement ? formatDuration(arrangement.durationMs) : t('projectReady'), [arrangement, t]);
 
   const addFiles = async (files: File[], kind: MediaKind, tabId: string) => {
     if (!files.length) return;
     setError(null);
     try {
-      const assets = await filesToAssets(files, kind, tabId);
+      let assets: MediaAsset[];
+      if (window.francisDesktop) {
+        const inputPaths = files.map(file => window.francisDesktop!.getPathForFile(file)).filter(Boolean);
+        setImportProgress({ completed: 0, total: inputPaths.length });
+        const result = await window.francisDesktop.importPaths({ inputPaths, kind, tabId,
+          verifyIntegrity: editingPreferences.verifyFileIntegrity,
+          knownFingerprints: [...allAssets.map(asset => asset.fingerprint), ...quarantine.map(item => item.fingerprint)].filter(Boolean),
+          knownFiles: [...allAssets, ...quarantine].map(item => ({ path: item.path, sizeBytes: item.sizeBytes })) });
+        let destinationTabId = tabId;
+        const existing = allAssets.some(asset => asset.libraryTabId === tabId);
+        if (result.folderImport && existing) {
+          destinationTabId = `${kind}-${crypto.randomUUID()}`;
+          const sameKind = libraryTabs.filter(tab => tab.kind === kind);
+          setLibraryTabs(current => [...current, { id: destinationTabId, kind, name: result.suggestedName,
+            color: tabColors[sameKind.length % tabColors.length], localAutomationEnabled: false, automationPoints: [] }]);
+          if (kind === 'music') setActiveMusicTabId(destinationTabId); else setActiveVoiceTabId(destinationTabId);
+        }
+        assets = result.assets.map((asset: MediaAsset) => ({ ...asset, libraryTabId: destinationTabId,
+          color: tabColors[Math.abs(asset.name.length) % tabColors.length] }));
+        setQuarantine(current => [...current, ...result.quarantined]);
+        setImportLogs(current => [result.log, ...current]);
+        const tab = libraryTabs.find(item => item.id === tabId);
+        if (!existing && tab && /^(Música|Music|Locuciones|Voice spots?)\s+\d+$/i.test(tab.name)) updateLibraryTab(tabId, { name: result.suggestedName });
+        if (result.quarantined.length) setQuarantineOpen(true);
+      } else assets = await filesToAssets(files, kind, tabId);
       if (kind === 'music') setMusic(current => [...current, ...assets]);
       else setVoices(current => [...current, ...assets]);
       setArrangement(null);
       setAutomation(null);
     } catch {
       setError(t('fileError'));
+    } finally {
+      setImportProgress(null);
     }
   };
 
@@ -731,8 +779,9 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.8.0', settings, audioSettings, editingPreferences, libraryTabs,
-    activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets
+    name: projectName, version: '0.9.0', settings, audioSettings, editingPreferences, libraryTabs,
+    activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
+    quarantine, importLogs
   });
 
   const saveProject = async (saveAs = false) => {
@@ -759,10 +808,11 @@ export default function App() {
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
       setMusic(project.assets.filter(asset => asset.kind === 'music'));
       setVoices(project.assets.filter(asset => asset.kind === 'voice'));
-      setSettings(project.settings); setAudioSettings(project.audioSettings); setEditingPreferences(project.editingPreferences);
+      setSettings(project.settings); setAudioSettings(project.audioSettings); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
       setLibraryTabs(project.libraryTabs); setActiveMusicTabId(project.activeMusicTabId); setActiveVoiceTabId(project.activeVoiceTabId);
       setMusicInsertion(project.musicInsertion); setVoiceInsertion(project.voiceInsertion);
       setArrangement(project.arrangement); setAutomation(project.automation);
+      setQuarantine(project.quarantine ?? []); setImportLogs(project.importLogs ?? []);
       setHighlightedAssetIds(new Set()); setProjectPath(opened.projectPath); setProjectName(project.name);
     } catch {
       setError(t('projectOpenError'));
@@ -774,12 +824,29 @@ export default function App() {
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
-    setHighlightedAssetIds(new Set()); setProjectPath(undefined); setProjectName(t('untitledProject'));
+    setHighlightedAssetIds(new Set()); setQuarantine([]); setImportLogs([]); setProjectPath(undefined); setProjectName(t('untitledProject'));
   };
 
   const exportAudio = async (exportSettings: ExportSettings) => {
     if (!window.francisDesktop || !arrangement) return null;
     return window.francisDesktop.exportAudio(projectDocument(), exportSettings);
+  };
+
+  const admitFromQuarantine = (item: QuarantineItem) => {
+    const libraryTabId = item.kind === 'music' ? activeMusicTabId : activeVoiceTabId;
+    const asset: MediaAsset = {
+      id: `${item.kind}-${crypto.randomUUID()}`, kind: item.kind, name: item.name.replace(/\.[^/.]+$/, ''),
+      durationMs: item.durationMs, sizeBytes: item.sizeBytes, path: item.path, previewUrl: item.previewUrl,
+      color: tabColors[item.name.length % tabColors.length], libraryTabId, waveform: [], fingerprint: item.fingerprint, integrity: 'warning'
+    };
+    if (item.kind === 'music') setMusic(current => [...current, asset]); else setVoices(current => [...current, asset]);
+    setQuarantine(current => current.filter(candidate => candidate.id !== item.id));
+    setImportLogs(current => [{
+      id: crypto.randomUUID(), startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), sourceCount: 1,
+      importedCount: 1, quarantinedCount: 0, duplicateCount: 0,
+      entries: [{ path: item.path, name: item.name, outcome: 'imported', detail: 'Manually admitted from quarantine' }]
+    }, ...current]);
+    setArrangement(null); setAutomation(null);
   };
 
   useEffect(() => {
@@ -802,6 +869,8 @@ export default function App() {
         <button onClick={() => void openProject()} title={`${t('openProject')} · Ctrl/⌘O`}>⌂</button>
         <button onClick={() => void saveProject(false)} title={`${t('saveProject')} · Ctrl/⌘S`}>▣</button>
         <button onClick={() => void saveProject(true)} title={t('saveProjectAs')}>▣＋</button>
+        <button className={quarantine.length ? 'attention' : ''} onClick={() => setQuarantineOpen(true)} title={t('quarantine')}>Q {quarantine.length}</button>
+        <button onClick={() => setImportLogOpen(true)} title={t('importLog')}>☷ {importLogs.length}</button>
         <button className="export-nav" onClick={() => setExportOpen(true)} disabled={!arrangement} title={t('exportMix')}>{t('export')}</button>
       </nav>
       <div className="language-switch" aria-label={t('language')}>
@@ -865,5 +934,9 @@ export default function App() {
         onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>
     <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />
+    <QuarantineDialog open={quarantineOpen} items={quarantine} onClose={() => setQuarantineOpen(false)} onAdmit={admitFromQuarantine} />
+    <ImportLogDialog open={importLogOpen} logs={importLogs} onClose={() => setImportLogOpen(false)} />
+    {importProgress && <div className="import-progress-toast"><strong>{t('analyzingFiles')}</strong>
+      <span>{importProgress.completed} / {importProgress.total}</span><i><b style={{ width: `${importProgress.total ? importProgress.completed / importProgress.total * 100 : 0}%` }} /></i></div>}
   </div>;
 }

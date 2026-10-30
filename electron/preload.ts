@@ -23,5 +23,11 @@ contextBridge.exposeInMainWorld('francisDesktop', {
     const listener = (_event: Electron.IpcRendererEvent, progress: number) => callback(progress);
     ipcRenderer.on('audio:export-progress', listener);
     return () => ipcRenderer.removeListener('audio:export-progress', listener);
+  },
+  importPaths: (request: unknown) => ipcRenderer.invoke('media:import-paths', request),
+  onImportProgress: (callback: (progress: { completed: number; total: number }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: { completed: number; total: number }) => callback(progress);
+    ipcRenderer.on('media:import-progress', listener);
+    return () => ipcRenderer.removeListener('media:import-progress', listener);
   }
 });

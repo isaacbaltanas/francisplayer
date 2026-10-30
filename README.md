@@ -98,4 +98,12 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 
 Los avisos y licencias del binario FFmpeg incluido se documentan en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
+## Versión 0.9
+
+- Importación masiva de archivos y carpetas completas, con progreso y análisis concurrente controlado.
+- Nombres automáticos de pestaña basados en la carpeta y el nombre más común.
+- Integridad opcional, SHA-256 y deduplicación exacta.
+- Cuarentena con preescucha y admisión manual: ningún archivo se pierde ni se ignora silenciosamente.
+- Historial persistente con el resultado individual de cada archivo.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

@@ -65,11 +65,13 @@ export const createArrangement = (
   settings: ArrangementSettings
 ): Arrangement => {
   const durationMs = Math.max(1_000, settings.targetDurationMs);
+  const validMusicAssets = musicAssets.filter(asset => asset.durationMs > 0);
+  const validVoiceAssets = voiceAssets.filter(asset => asset.durationMs > 0);
   const warnings: string[] = [];
   const music: TimelineClip[] = [];
   const voice: TimelineClip[] = [];
 
-  if (musicAssets.length === 0) {
+  if (validMusicAssets.length === 0) {
     music.push({
       id: 'missing-all', kind: 'missing', name: 'missingMusic', startMs: 0,
       generatedStartMs: 0,
@@ -80,7 +82,7 @@ export const createArrangement = (
     let cursor = 0;
     let cycle = 0;
     while (cursor < durationMs) {
-      const sequence = ordered(musicAssets, settings.musicOrder, settings.seed + cycle);
+      const sequence = ordered(validMusicAssets, settings.musicOrder, settings.seed + cycle);
       for (const asset of sequence) {
         const remaining = durationMs - cursor;
         if (remaining <= 0) break;
@@ -102,8 +104,8 @@ export const createArrangement = (
   }
 
   const voices = settings.voiceOrder === 'random'
-    ? shuffleWithSeed(voiceAssets, settings.seed + 10_000)
-    : [...voiceAssets];
+    ? shuffleWithSeed(validVoiceAssets, settings.seed + 10_000)
+    : [...validVoiceAssets];
 
   if (voices.length > 0) {
     if (settings.voicePlacement === 'uniform') {

@@ -35,6 +35,8 @@ export interface MediaAsset {
   color: string;
   libraryTabId: string;
   waveform: number[];
+  fingerprint?: string;
+  integrity?: 'unchecked' | 'valid' | 'warning';
 }
 
 export interface ArrangementSettings {
@@ -111,6 +113,39 @@ export interface EditingPreferences {
   snapMode: SnapMode;
   snapGridMs: number;
   allowAssetReuse: boolean;
+  verifyFileIntegrity: boolean;
+}
+
+export interface QuarantineItem {
+  id: string;
+  kind: MediaKind;
+  name: string;
+  path: string;
+  previewUrl: string;
+  sizeBytes: number;
+  durationMs: number;
+  fingerprint: string;
+  reason: 'unsupported' | 'corrupt' | 'unreadable' | 'invalidDuration';
+  detail: string;
+  importedAt: string;
+}
+
+export interface ImportLogEntry {
+  path: string;
+  name: string;
+  outcome: 'imported' | 'quarantined' | 'duplicate';
+  detail: string;
+}
+
+export interface ImportLog {
+  id: string;
+  startedAt: string;
+  finishedAt: string;
+  sourceCount: number;
+  importedCount: number;
+  quarantinedCount: number;
+  duplicateCount: number;
+  entries: ImportLogEntry[];
 }
 
 export interface ExportSettings {
