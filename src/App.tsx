@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
-import { createArrangement } from './lib/arrangement';
-import { createAutomationState, syncDefaultAutomationGroups } from './lib/automation';
+import { createArrangement, rebuildMissingMusic } from './lib/arrangement';
+import { addAutomationAssignment, createAutomationState, removeAutomationAssignment, syncDefaultAutomationGroups } from './lib/automation';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
 import { useTimelinePlayer } from './hooks/useTimelinePlayer';
 import { AutomationEditor } from './components/AutomationEditor';
-import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, MediaAsset, MediaKind, TimelineClip } from './types';
+import { snapClipStart } from './lib/snapping';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, MediaAsset, MediaKind, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -28,6 +29,13 @@ const defaultAudioSettings: AudioSettings = {
   fadeUpMs: 2000
 };
 
+const defaultEditingPreferences: EditingPreferences = {
+  snapEnabled: true,
+  snapMode: 'smart',
+  snapGridMs: 1000,
+  allowAssetReuse: true
+};
+
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
 
 function BrandMark() {
@@ -38,12 +46,16 @@ interface AssetListProps {
   kind: MediaKind;
   assets: MediaAsset[];
   activePreview: string | null;
+  occurrences: Map<string, number>;
+  highlightedAssetIds: Set<string>;
+  allowAssetReuse: boolean;
   onFiles: (files: File[], kind: MediaKind) => void;
   onRemove: (id: string) => void;
   onPreview: (asset: MediaAsset) => void;
+  onToggleHighlight: (id: string) => void;
 }
 
-function AssetList({ kind, assets, activePreview, onFiles, onRemove, onPreview }: AssetListProps) {
+function AssetList({ kind, assets, activePreview, occurrences, highlightedAssetIds, allowAssetReuse, onFiles, onRemove, onPreview, onToggleHighlight }: AssetListProps) {
   const { t, i18n } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
   const total = assets.reduce((sum, asset) => sum + asset.durationMs, 0);
@@ -71,7 +83,15 @@ function AssetList({ kind, assets, activePreview, onFiles, onRemove, onPreview }
         <div className="empty-wave">⌁</div>
         <p>{t(kind === 'music' ? 'emptyMusic' : 'emptyVoice')}</p>
       </div>}
-      {assets.map((asset, index) => <article className="asset-row" key={asset.id}>
+      {assets.map((asset, index) => {
+        const occurrenceCount = occurrences.get(asset.id) ?? 0;
+        const locked = !allowAssetReuse && occurrenceCount > 0;
+        const highlighted = highlightedAssetIds.has(asset.id);
+        return <article className={`asset-row ${locked ? 'asset-locked' : ''} ${highlighted ? 'asset-highlighted' : ''}`} key={asset.id}
+          draggable={!locked} onDragStart={(event) => {
+            event.dataTransfer.effectAllowed = 'copy';
+            event.dataTransfer.setData('application/x-francis-asset', JSON.stringify({ assetId: asset.id, kind: asset.kind }));
+          }}>
         <button className={`preview-button ${activePreview === asset.id ? 'active' : ''}`} onClick={() => onPreview(asset)}
           aria-label={t(activePreview === asset.id ? 'pause' : 'play')}>
           {activePreview === asset.id ? '■' : '▶'}
@@ -81,8 +101,11 @@ function AssetList({ kind, assets, activePreview, onFiles, onRemove, onPreview }
           <strong title={asset.name}>{asset.name}</strong>
           <span>{formatDuration(asset.durationMs)} · {formatBytes(asset.sizeBytes, i18n.language)}</span>
         </div>
+        <span className={`occurrence-badge ${occurrenceCount > 0 ? 'used' : ''}`} title={t('timelineOccurrences', { count: occurrenceCount })}>{occurrenceCount}</span>
+        <button className={`highlight-button ${highlighted ? 'active' : ''}`} onClick={() => onToggleHighlight(asset.id)}
+          aria-label={t('highlightOccurrences')}>◉</button>
         <button className="remove-button" onClick={() => onRemove(asset.id)} aria-label={t('remove')}>×</button>
-      </article>)}
+      </article>;})}
     </div>
 
     <footer className="asset-footer">
@@ -96,17 +119,19 @@ interface SettingsPanelProps {
   settings: ArrangementSettings;
   audioSettings: AudioSettings;
   automation: AutomationState | null;
+  editingPreferences: EditingPreferences;
   mounted: boolean;
   canMount: boolean;
   onChange: (patch: Partial<ArrangementSettings>) => void;
   onAudioChange: (patch: Partial<AudioSettings>) => void;
   onAutomationChange: (state: AutomationState) => void;
+  onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
   onMount: () => void;
 }
 
-function SettingsPanel({ settings, audioSettings, automation, mounted, canMount, onChange, onAudioChange, onAutomationChange, onMount }: SettingsPanelProps) {
+function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, onChange, onAudioChange, onAutomationChange, onEditingPreferencesChange, onMount }: SettingsPanelProps) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation'>('arrangement');
+  const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
 
   return <aside className="settings-panel">
@@ -116,7 +141,7 @@ function SettingsPanel({ settings, audioSettings, automation, mounted, canMount,
     </div>
 
     <div className="settings-tabs">
-      {(['arrangement', 'audio', 'automation'] as const).map(item => <button key={item}
+      {(['arrangement', 'audio', 'automation', 'editing'] as const).map(item => <button key={item}
         className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{t(`settingsTab_${item}`)}</button>)}
     </div>
 
@@ -181,6 +206,21 @@ function SettingsPanel({ settings, audioSettings, automation, mounted, canMount,
       <p className="settings-help">{t('automationSettingsHelp')}</p>
     </div>}
 
+    {tab === 'editing' && <div className="settings-tab-content automation-settings">
+      <Toggle label={t('enableSnap')} checked={editingPreferences.snapEnabled}
+        onChange={(snapEnabled) => onEditingPreferencesChange({ snapEnabled })} />
+      <Segmented label={t('snapMode')} value={editingPreferences.snapMode} full options={[
+        ['smart', t('snapSmart')], ['grid', t('snapGrid')], ['edges', t('snapEdges')], ['original', t('snapOriginal')]
+      ]} onChange={(value) => onEditingPreferencesChange({ snapMode: value as EditingPreferences['snapMode'] })} />
+      <label className="field full"><span>{t('gridStep')}</span><div className="number-field">
+        <input type="number" min="10" max="60000" step="10" value={editingPreferences.snapGridMs}
+          onChange={(event) => onEditingPreferencesChange({ snapGridMs: Math.max(10, Number(event.target.value)) })} /><em>ms</em>
+      </div></label>
+      <Toggle label={t('allowAssetReuse')} checked={editingPreferences.allowAssetReuse}
+        onChange={(allowAssetReuse) => onEditingPreferencesChange({ allowAssetReuse })} />
+      <p className="settings-help">{t('snapControlHint')}</p>
+    </div>}
+
     <button className="mount-button" disabled={!canMount} onClick={onMount}>
       <span className="mount-symbol">✦</span>{t(mounted ? 'remount' : 'mount')}<span className="arrow">→</span>
     </button>
@@ -219,14 +259,63 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
     onChange={(event) => onChange(event.target.checked)} /><i /></label>;
 }
 
-function TimelineClipView({ clip, totalMs, t }: { clip: TimelineClip; totalMs: number; t: (key: string) => string }) {
+function TimelineClipView({ clip, arrangement, canvasRef, preferences, dimmed, highlighted, onMove, onRemove, onDragEnd }: {
+  clip: TimelineClip;
+  arrangement: Arrangement;
+  canvasRef: React.RefObject<HTMLDivElement | null>;
+  preferences: EditingPreferences;
+  dimmed: boolean;
+  highlighted: boolean;
+  onMove: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
+  onRemove: (clip: TimelineClip) => void;
+  onDragEnd: () => void;
+}) {
+  const { t } = useTranslation();
+  const [drag, setDrag] = useState<{ clientX: number; startMs: number } | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
+  const totalMs = arrangement.durationMs;
   const left = (clip.startMs / totalMs) * 100;
   const width = Math.max((clip.durationMs / totalMs) * 100, 0.18);
   const style = { left: `${left}%`, width: `${width}%`, backgroundColor: clip.color };
-  return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''}`} style={style}
-    title={`${clip.kind === 'missing' ? t('missingMusic') : clip.name} · ${formatDuration(clip.durationMs)}`}>
+  return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''} ${drag ? 'dragging' : ''} ${dimmed ? 'clip-dimmed' : ''} ${highlighted ? 'clip-highlighted' : ''}`} style={style}
+    title={`${clip.kind === 'missing' ? t('missingMusic') : clip.name} · ${formatDuration(clip.durationMs)}`}
+    onPointerDown={(event) => {
+      if (clip.kind === 'missing' || event.button !== 0) return;
+      event.stopPropagation();
+      event.currentTarget.setPointerCapture(event.pointerId);
+      setDrag({ clientX: event.clientX, startMs: clip.startMs });
+      setMenu(null);
+    }}
+    onPointerMove={(event) => {
+      if (!drag || !canvasRef.current) return;
+      event.stopPropagation();
+      const widthPx = canvasRef.current.getBoundingClientRect().width;
+      const proposed = drag.startMs + (event.clientX - drag.clientX) / widthPx * arrangement.durationMs;
+      if (!preferences.snapEnabled || event.ctrlKey) {
+        onMove(clip.id, clip.kind, Math.max(0, Math.min(arrangement.durationMs - clip.durationMs, proposed)), null);
+        return;
+      }
+      const snapped = snapClipStart({
+        proposedStartMs: proposed, clip, arrangement, mode: preferences.snapMode,
+        gridMs: preferences.snapGridMs, toleranceMs: arrangement.durationMs / widthPx * 10
+      });
+      onMove(clip.id, clip.kind, snapped.startMs, snapped.guideMs);
+    }}
+    onPointerUp={(event) => { event.stopPropagation(); setDrag(null); onDragEnd(); }}
+    onPointerCancel={() => { setDrag(null); onDragEnd(); }}
+    onContextMenu={(event) => {
+      if (clip.kind === 'missing') return;
+      event.preventDefault(); event.stopPropagation();
+      setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
+    }}>
     <span>{clip.kind === 'missing' ? t('missingMusic') : clip.name}</span>
     {clip.kind !== 'missing' && <small>{formatDuration(clip.durationMs)}</small>}
+    {clip.manuallyPositioned && <i className="manual-position-dot" title={t('manuallyPositioned')} />}
+    {menu && <div className="clip-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
+      <button onClick={(event) => { event.stopPropagation(); onMove(clip.id, clip.kind, clip.generatedStartMs, clip.generatedStartMs); setMenu(null); }}>↩ {t('restoreGeneratedPosition')}</button>
+      <button className="danger" onClick={(event) => { event.stopPropagation(); onRemove(clip); setMenu(null); }}>× {t('removeFromTimeline')}</button>
+      <button onClick={(event) => { event.stopPropagation(); setMenu(null); }}>{t('close')}</button>
+    </div>}
   </div>;
 }
 
@@ -236,16 +325,25 @@ interface TimelineProps {
   positionMs: number;
   musicGainDb: number;
   automation: AutomationState | null;
+  editingPreferences: EditingPreferences;
+  highlightedAssetIds: Set<string>;
   onAutomationChange: (state: AutomationState) => void;
+  onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
+  onMoveClip: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
+  onRemoveClip: (clip: TimelineClip) => void;
+  onDropAsset: (assetId: string, kind: MediaKind, startMs: number) => void;
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
   onSeek: (positionMs: number) => void;
 }
 
-function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, automation, onAutomationChange, onPlay, onPause, onStop, onSeek }: TimelineProps) {
+function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, automation, editingPreferences, highlightedAssetIds,
+  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onDropAsset, onPlay, onPause, onStop, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
+  const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
+  const canvasRef = useRef<HTMLDivElement>(null);
   const width = arrangement ? Math.max(100, arrangement.durationMs / 60_000 * 70 * zoom) : 100;
   const markerStepMs = arrangement && arrangement.durationMs <= 15 * 60_000 ? 60_000 : 5 * 60_000;
   const markers = arrangement ? Array.from({ length: Math.floor(arrangement.durationMs / markerStepMs) + 1 }, (_, index) => index * markerStepMs) : [];
@@ -253,8 +351,17 @@ function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, automation,
   return <section className="timeline-section">
     <header className="timeline-header">
       <div><h2>{t('timeline')}</h2></div>
+      <div className="timeline-tools"><button className={`magnet-button ${editingPreferences.snapEnabled ? 'active' : ''}`}
+        onClick={() => onEditingPreferencesChange({ snapEnabled: !editingPreferences.snapEnabled })}
+        title={t('toggleSnap')}>🧲</button>
+      <select value={editingPreferences.snapMode} onChange={(event) => onEditingPreferencesChange({ snapMode: event.target.value as EditingPreferences['snapMode'] })}
+        aria-label={t('snapMode')}>
+        <option value="smart">{t('snapSmart')}</option><option value="grid">{t('snapGrid')}</option>
+        <option value="edges">{t('snapEdges')}</option><option value="original">{t('snapOriginal')}</option>
+      </select>
       <div className="zoom-control"><span>{t('zoom')}</span><button onClick={() => setZoom(Math.max(.5, zoom - .25))}>−</button>
         <output>{Math.round(zoom * 100)}%</output><button onClick={() => setZoom(Math.min(4, zoom + .25))}>＋</button></div>
+      </div>
     </header>
 
     {!arrangement ? <div className="timeline-empty"><div className="timeline-empty-icon">⌁⌁⌁</div><p>{t('timelineEmpty')}</p></div> : <>
@@ -281,17 +388,34 @@ function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, automation,
           {automation?.visible && <div className="automation-track-label"><span className="track-dot automation-dot" />{t('automationTrack')}</div>}
         </div>
         <div className="timeline-scroll">
-          <div className="timeline-canvas" style={{ width: `${width}%` }} onClick={(event) => {
+          <div ref={canvasRef} className="timeline-canvas" style={{ width: `${width}%` }} onClick={(event) => {
             const bounds = event.currentTarget.getBoundingClientRect();
             onSeek((event.clientX - bounds.left) / bounds.width * arrangement.durationMs);
+          }} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-francis-asset')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
+          onDrop={(event) => {
+            event.preventDefault(); event.stopPropagation();
+            try {
+              const data = JSON.parse(event.dataTransfer.getData('application/x-francis-asset')) as { assetId: string; kind: MediaKind };
+              const bounds = event.currentTarget.getBoundingClientRect();
+              onDropAsset(data.assetId, data.kind, (event.clientX - bounds.left) / bounds.width * arrangement.durationMs);
+            } catch { /* Ignore unrelated drops. */ }
           }}>
             <div className="ruler">{markers.map(marker => <div className="marker" key={marker}
               style={{ left: `${marker / arrangement.durationMs * 100}%` }}><span>{formatDuration(marker)}</span></div>)}</div>
             <div className="track voice-track">{arrangement.voice.map(clip => <TimelineClipView key={clip.id} clip={clip}
-              totalMs={arrangement.durationMs} t={t} />)}</div>
+              arrangement={arrangement} canvasRef={canvasRef} preferences={editingPreferences}
+              dimmed={highlightedAssetIds.size > 0 && !highlightedAssetIds.has(clip.assetId ?? '')}
+              highlighted={highlightedAssetIds.has(clip.assetId ?? '')}
+              onMove={(...args) => { setSnapGuideMs(args[3]); onMoveClip(...args); }} onRemove={onRemoveClip}
+              onDragEnd={() => setSnapGuideMs(null)} />)}</div>
             <div className="track music-track">{arrangement.music.map(clip => <TimelineClipView key={clip.id} clip={clip}
-              totalMs={arrangement.durationMs} t={t} />)}</div>
+              arrangement={arrangement} canvasRef={canvasRef} preferences={editingPreferences}
+              dimmed={highlightedAssetIds.size > 0 && !highlightedAssetIds.has(clip.assetId ?? '')}
+              highlighted={highlightedAssetIds.has(clip.assetId ?? '')}
+              onMove={(...args) => { setSnapGuideMs(args[3]); onMoveClip(...args); }} onRemove={onRemoveClip}
+              onDragEnd={() => setSnapGuideMs(null)} />)}</div>
             {automation?.visible && <AutomationEditor arrangement={arrangement} state={automation} onChange={onAutomationChange} />}
+            {snapGuideMs !== null && <div className="snap-guide" style={{ left: `${snapGuideMs / arrangement.durationMs * 100}%` }}><span>{formatDuration(snapGuideMs, true)}</span></div>}
             <div className="playhead" style={{ left: `${positionMs / arrangement.durationMs * 100}%` }}><span /></div>
           </div>
         </div>
@@ -308,6 +432,8 @@ export default function App() {
   const [audioSettings, setAudioSettings] = useState(defaultAudioSettings);
   const [arrangement, setArrangement] = useState<Arrangement | null>(null);
   const [automation, setAutomation] = useState<AutomationState | null>(null);
+  const [editingPreferences, setEditingPreferences] = useState(defaultEditingPreferences);
+  const [highlightedAssetIds, setHighlightedAssetIds] = useState<Set<string>>(new Set());
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
@@ -315,6 +441,14 @@ export default function App() {
   const assetsRef = useRef<MediaAsset[]>([]);
   assetsRef.current = allAssets;
   const player = useTimelinePlayer(arrangement, allAssets, audioSettings, automation);
+  const occurrences = useMemo(() => {
+    const counts = new Map<string, number>();
+    if (!arrangement) return counts;
+    [...arrangement.music, ...arrangement.voice].forEach(clip => {
+      if (clip.assetId) counts.set(clip.assetId, (counts.get(clip.assetId) ?? 0) + 1);
+    });
+    return counts;
+  }, [arrangement]);
 
   useEffect(() => () => {
     audio.current?.pause();
@@ -344,6 +478,7 @@ export default function App() {
     setVoices(current => current.filter(item => item.id !== id));
     setArrangement(null);
     setAutomation(null);
+    setHighlightedAssetIds(current => { const next = new Set(current); next.delete(id); return next; });
   };
 
   const preview = (asset: MediaAsset) => {
@@ -369,6 +504,61 @@ export default function App() {
     setAutomation(createAutomationState(next, audioSettings));
   };
 
+  const moveClip = (clipId: string, kind: TimelineClip['kind'], startMs: number, _guideMs: number | null) => {
+    if (!arrangement || kind === 'missing') return;
+    player.pause();
+    setArrangement(current => {
+      if (!current) return current;
+      if (kind === 'music') {
+        const moved = current.music.filter(clip => clip.kind === 'music').map(clip => clip.id === clipId ? {
+          ...clip, startMs, manuallyPositioned: Math.abs(startMs - clip.generatedStartMs) > 1
+        } : clip);
+        return { ...current, music: rebuildMissingMusic(moved, current.durationMs) };
+      }
+      return { ...current, voice: current.voice.map(clip => clip.id === clipId ? {
+        ...clip, startMs, manuallyPositioned: Math.abs(startMs - clip.generatedStartMs) > 1
+      } : clip).sort((a, b) => a.startMs - b.startMs) };
+    });
+  };
+
+  const removeClip = (clip: TimelineClip) => {
+    player.stop();
+    setArrangement(current => {
+      if (!current) return current;
+      if (clip.kind === 'music') return {
+        ...current,
+        music: rebuildMissingMusic(current.music.filter(item => item.id !== clip.id), current.durationMs)
+      };
+      if (clip.kind === 'voice') return { ...current, voice: current.voice.filter(item => item.id !== clip.id) };
+      return current;
+    });
+    if (clip.kind === 'voice') setAutomation(current => current ? removeAutomationAssignment(current, clip.id) : current);
+  };
+
+  const dropAsset = (assetId: string, kind: MediaKind, proposedStartMs: number) => {
+    if (!arrangement) return;
+    if (!editingPreferences.allowAssetReuse && (occurrences.get(assetId) ?? 0) > 0) return;
+    const asset = allAssets.find(item => item.id === assetId && item.kind === kind);
+    if (!asset) return;
+    const durationMs = Math.min(asset.durationMs, arrangement.durationMs);
+    const draft: TimelineClip = {
+      id: `clip-${asset.id}-${crypto.randomUUID()}`,
+      assetId: asset.id, kind, name: asset.name, startMs: proposedStartMs, generatedStartMs: proposedStartMs,
+      durationMs, sourceDurationMs: asset.durationMs, color: asset.color, manuallyPositioned: true
+    };
+    const snapped = editingPreferences.snapEnabled ? snapClipStart({
+      proposedStartMs, clip: draft, arrangement, mode: editingPreferences.snapMode,
+      gridMs: editingPreferences.snapGridMs, toleranceMs: 750
+    }).startMs : Math.max(0, Math.min(arrangement.durationMs - durationMs, proposedStartMs));
+    const clip = { ...draft, startMs: snapped, generatedStartMs: snapped };
+    setArrangement(current => {
+      if (!current) return current;
+      if (kind === 'music') return { ...current, music: rebuildMissingMusic([...current.music, clip], current.durationMs) };
+      return { ...current, voice: [...current.voice, clip].sort((a, b) => a.startMs - b.startMs) };
+    });
+    if (kind === 'voice') setAutomation(current => current ? addAutomationAssignment(current, clip.id) : current);
+  };
+
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><BrandMark /><div><h1>Francis Player</h1><p>{t('appSubtitle')}</p></div></div>
@@ -383,22 +573,33 @@ export default function App() {
       {error && <div className="error-banner">{error}<button onClick={() => setError(null)}>×</button></div>}
       <div className="workspace-grid">
         <div className="library-area">
-          <AssetList kind="music" assets={music} activePreview={activePreview} onFiles={addFiles}
-            onRemove={removeAsset} onPreview={preview} />
-          <AssetList kind="voice" assets={voices} activePreview={activePreview} onFiles={addFiles}
-            onRemove={removeAsset} onPreview={preview} />
+          <AssetList kind="music" assets={music} activePreview={activePreview} occurrences={occurrences}
+            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} onFiles={addFiles}
+            onRemove={removeAsset} onPreview={preview} onToggleHighlight={(id) => setHighlightedAssetIds(current => {
+              const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
+            })} />
+          <AssetList kind="voice" assets={voices} activePreview={activePreview} occurrences={occurrences}
+            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} onFiles={addFiles}
+            onRemove={removeAsset} onPreview={preview} onToggleHighlight={(id) => setHighlightedAssetIds(current => {
+              const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
+            })} />
         </div>
-        <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} mounted={Boolean(arrangement)}
+        <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} editingPreferences={editingPreferences} mounted={Boolean(arrangement)}
           canMount={music.length + voices.length > 0}
           onChange={(patch) => { player.stop(); setSettings(current => ({ ...current, ...patch })); setArrangement(null); setAutomation(null); }}
           onAudioChange={(patch) => {
             setAudioSettings(current => ({ ...current, ...patch }));
             setAutomation(current => current ? syncDefaultAutomationGroups(current, patch) : current);
           }}
-          onAutomationChange={setAutomation} onMount={mount} />
+          onAutomationChange={setAutomation}
+          onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
+          onMount={mount} />
       </div>
       <Timeline arrangement={arrangement} isPlaying={player.isPlaying} positionMs={player.positionMs}
-        musicGainDb={player.musicGainDb} automation={automation} onAutomationChange={setAutomation}
+        musicGainDb={player.musicGainDb} automation={automation} editingPreferences={editingPreferences}
+        highlightedAssetIds={highlightedAssetIds} onAutomationChange={setAutomation}
+        onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
+        onMoveClip={moveClip} onRemoveClip={removeClip} onDropAsset={dropAsset}
         onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
         onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>

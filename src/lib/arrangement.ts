@@ -21,6 +21,26 @@ export const shuffleWithSeed = <T,>(items: T[], seed: number) => {
   return result;
 };
 
+export const rebuildMissingMusic = (clips: TimelineClip[], durationMs: number): TimelineClip[] => {
+  const content = clips.filter(clip => clip.kind === 'music').sort((a, b) => a.startMs - b.startMs);
+  const missing: TimelineClip[] = [];
+  let coveredUntil = 0;
+  for (const clip of content) {
+    if (clip.startMs > coveredUntil) missing.push({
+      id: `missing-${coveredUntil}-${clip.startMs}`,
+      kind: 'missing', name: 'missingMusic', startMs: coveredUntil, generatedStartMs: coveredUntil,
+      durationMs: clip.startMs - coveredUntil, color: '#ce4a54'
+    });
+    coveredUntil = Math.max(coveredUntil, clip.startMs + clip.durationMs);
+  }
+  if (coveredUntil < durationMs) missing.push({
+    id: `missing-${coveredUntil}-${durationMs}`,
+    kind: 'missing', name: 'missingMusic', startMs: coveredUntil, generatedStartMs: coveredUntil,
+    durationMs: durationMs - coveredUntil, color: '#ce4a54'
+  });
+  return [...content, ...missing].sort((a, b) => a.startMs - b.startMs || (a.kind === 'missing' ? -1 : 1));
+};
+
 const ordered = (assets: MediaAsset[], mode: ArrangementSettings['musicOrder'], seed: number) => (
   mode === 'random' ? shuffleWithSeed(assets, seed) : [...assets]
 );
@@ -31,6 +51,7 @@ const makeClip = (asset: MediaAsset, startMs: number, durationMs = asset.duratio
   kind: asset.kind,
   name: asset.name,
   startMs,
+  generatedStartMs: startMs,
   durationMs,
   sourceDurationMs: asset.durationMs,
   color: asset.color,
@@ -50,6 +71,7 @@ export const createArrangement = (
   if (musicAssets.length === 0) {
     music.push({
       id: 'missing-all', kind: 'missing', name: 'missingMusic', startMs: 0,
+      generatedStartMs: 0,
       durationMs, color: '#ce4a54'
     });
     warnings.push('missingMusic');
@@ -71,6 +93,7 @@ export const createArrangement = (
     if (cursor < durationMs) {
       music.push({
         id: `missing-${cursor}`, kind: 'missing', name: 'missingMusic', startMs: cursor,
+        generatedStartMs: cursor,
         durationMs: durationMs - cursor, color: '#ce4a54'
       });
       warnings.push('missingMusic');

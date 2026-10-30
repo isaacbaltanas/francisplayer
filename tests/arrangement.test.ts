@@ -13,7 +13,7 @@ const asset = (id: string, kind: 'music' | 'voice', durationMs: number): MediaAs
 
 describe('audio automation', () => {
   const audioSettings = { musicGainDb: -3, voiceGainDb: -1, duckingGainDb: -40, fadeDownMs: 1000, fadeUpMs: 2000 };
-  const voiceClip = { id: 'v', kind: 'voice' as const, name: 'voice', startMs: 10_000, durationMs: 5_000, color: '#fff' };
+  const voiceClip = { id: 'v', kind: 'voice' as const, name: 'voice', startMs: 10_000, generatedStartMs: 10_000, durationMs: 5_000, color: '#fff' };
 
   it('calculates fade down, hold and recovery in dB', () => {
     expect(calculateDuckingDb(9_000, [voiceClip], audioSettings)).toBe(-3);

@@ -14,7 +14,13 @@
 - Menú contextual para crear grupos o reasignar un segmento a un grupo existente.
 - Los grupos de automatización controlan la reproducción real.
 
-## 0.4.0 — Bibliotecas, pestañas y pistas
+## 0.4.0 — Edición manual e imán
+
+- Arrastre manual y desde las bibliotecas.
+- Imán inteligente, de cuadrícula, bordes o posición original.
+- Bloqueo/reutilización, contador de apariciones y destacado de cortes.
+
+## 0.5.0 — Bibliotecas, pestañas y pistas
 
 - Varias pestañas dentro de Música y Locuciones.
 - Una pista de línea de tiempo por pestaña.
@@ -22,12 +28,21 @@
 - Automatización local opcional por pista.
 - Creación, renombrado, orden y eliminación de pestañas.
 
-## 0.5.0 — Proyectos portátiles y exportación
+## 0.6.0 — Regiones de audio y solapamientos
+
+- Onda de audio en cada región.
+- Fade in/out local arrastrando las esquinas superiores.
+- Regiones superpuestas semitransparentes y reproducción simultánea.
+- Detección y aviso de voces solapadas.
+
+## 0.7.0 — Proyectos portátiles
 
 - Contenedor `.francis` asociado a la aplicación y abrible con doble clic.
-- Estructura interna legible: `Music/`, `Voice/`, `Configuration/` y manifiesto del proyecto.
-- Proyecto completamente editable y transferible entre macOS y Windows.
-- Guardar, Guardar como y abrir proyecto.
+- Estructura interna legible: `Music/`, `Voice/`, `Configuration/` y manifiesto.
+- Guardar, Guardar como, abrir y transferir proyectos entre macOS y Windows.
+
+## 0.8.0 — Exportación local
+
 - Exportación local con FFmpeg.
 - WAV, MP3, AAC, FLAC y otros formatos compatibles.
 - Mono/estéreo, frecuencia de muestreo, profundidad de bits, bitrate y opciones específicas por formato.

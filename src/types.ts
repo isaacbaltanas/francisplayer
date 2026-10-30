@@ -1,6 +1,7 @@
 export type MediaKind = 'music' | 'voice';
 export type OrderMode = 'sequential' | 'random';
 export type VoicePlacement = 'interval' | 'uniform';
+export type SnapMode = 'smart' | 'grid' | 'edges' | 'original';
 
 export interface MediaAsset {
   id: string;
@@ -64,10 +65,12 @@ export interface TimelineClip {
   kind: MediaKind | 'missing';
   name: string;
   startMs: number;
+  generatedStartMs: number;
   durationMs: number;
   sourceDurationMs?: number;
   color: string;
   truncated?: boolean;
+  manuallyPositioned?: boolean;
 }
 
 export interface Arrangement {
@@ -75,4 +78,11 @@ export interface Arrangement {
   music: TimelineClip[];
   voice: TimelineClip[];
   warnings: string[];
+}
+
+export interface EditingPreferences {
+  snapEnabled: boolean;
+  snapMode: SnapMode;
+  snapGridMs: number;
+  allowAssetReuse: boolean;
 }

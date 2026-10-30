@@ -62,4 +62,12 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - `Shift` para separar un segmento y menú contextual para reasignar grupos.
 - Automatizaciones visibles u ocultables y conectadas a la reproducción.
 
+## Versión 0.4
+
+- Cortes movibles manualmente y archivos arrastrables desde las bibliotecas.
+- Imán inteligente configurable, guía de ajuste y posición automática recuperable.
+- Bloqueo o reutilización de archivos ya insertados.
+- Contador de apariciones y destacado múltiple de cortes en la línea de tiempo.
+- Recalculo automático de los huecos de música tras cada edición.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

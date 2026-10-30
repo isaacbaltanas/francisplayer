@@ -12,7 +12,7 @@ const resources = {
     emptyVoice: 'Añade locuciones para distribuirlas', remove: 'Eliminar', play: 'Escuchar', pause: 'Pausar',
     items: '{{count}} archivos', total: '{{duration}} en total',
     setup: 'Configuración de montaje', targetDuration: 'Duración objetivo', minutes: 'minutos',
-    settingsTab_arrangement: 'Montaje', settingsTab_audio: 'Audio', settingsTab_automation: 'Automatización',
+    settingsTab_arrangement: 'Montaje', settingsTab_audio: 'Audio', settingsTab_automation: 'Automatización', settingsTab_editing: 'Edición',
     musicOrder: 'Orden de música', voiceOrder: 'Orden de locuciones', sequential: 'Secuencial', random: 'Aleatorio',
     repeatMusic: 'Repetir música al terminar', voicePlacement: 'Distribución de locuciones',
     interval: 'Intervalo fijo', uniform: 'Uniforme', intervalSeconds: 'Intervalo entre inicios', seconds: 'segundos',
@@ -34,7 +34,13 @@ const resources = {
     globalMusicAutomation: 'Automatización global de música', automationHint: 'Arrastra · Shift separa · Doble clic crea grupo · Botón derecho reasigna',
     highDucking: 'Ducking Alto', lowDucking: 'Ducking Bajo', transitionIn: 'Transición Entrada', transitionOut: 'Transición Salida',
     detachNewGroup: 'Separar en un grupo nuevo', assignToGroup: 'Vincular a un grupo existente', close: 'Cerrar',
-    automationTrack: 'AUTOMATIZACIÓN'
+    automationTrack: 'AUTOMATIZACIÓN', enableSnap: 'Activar imán', snapMode: 'Modo de ajuste',
+    snapSmart: 'Inteligente', snapGrid: 'Rejilla', snapEdges: 'Bordes', snapOriginal: 'Origen', gridStep: 'Paso de rejilla',
+    allowAssetReuse: 'Permitir reutilizar archivos', snapControlHint: 'Mantén Control mientras arrastras para ignorar temporalmente el imán.',
+    toggleSnap: 'Activar o desactivar imán', timelineOccurrences_one: '{{count}} aparición en la línea de tiempo',
+    timelineOccurrences_other: '{{count}} apariciones en la línea de tiempo', highlightOccurrences: 'Destacar apariciones',
+    manuallyPositioned: 'Posición modificada manualmente', restoreGeneratedPosition: 'Restaurar posición automática',
+    removeFromTimeline: 'Eliminar de la línea de tiempo'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -46,7 +52,7 @@ const resources = {
     emptyVoice: 'Add voice spots to distribute them', remove: 'Remove', play: 'Preview', pause: 'Pause',
     items: '{{count}} files', total: '{{duration}} total',
     setup: 'Arrangement settings', targetDuration: 'Target duration', minutes: 'minutes',
-    settingsTab_arrangement: 'Arrangement', settingsTab_audio: 'Audio', settingsTab_automation: 'Automation',
+    settingsTab_arrangement: 'Arrangement', settingsTab_audio: 'Audio', settingsTab_automation: 'Automation', settingsTab_editing: 'Editing',
     musicOrder: 'Music order', voiceOrder: 'Voice order', sequential: 'Sequential', random: 'Random',
     repeatMusic: 'Repeat music when it ends', voicePlacement: 'Voice distribution',
     interval: 'Fixed interval', uniform: 'Evenly spaced', intervalSeconds: 'Interval between starts', seconds: 'seconds',
@@ -68,7 +74,13 @@ const resources = {
     globalMusicAutomation: 'Global music automation', automationHint: 'Drag · Shift detaches · Double-click creates group · Right-click reassigns',
     highDucking: 'High Ducking', lowDucking: 'Low Ducking', transitionIn: 'Transition In', transitionOut: 'Transition Out',
     detachNewGroup: 'Detach into a new group', assignToGroup: 'Assign to an existing group', close: 'Close',
-    automationTrack: 'AUTOMATION'
+    automationTrack: 'AUTOMATION', enableSnap: 'Enable snap', snapMode: 'Snap mode',
+    snapSmart: 'Smart', snapGrid: 'Grid', snapEdges: 'Edges', snapOriginal: 'Original', gridStep: 'Grid step',
+    allowAssetReuse: 'Allow file reuse', snapControlHint: 'Hold Control while dragging to temporarily bypass snapping.',
+    toggleSnap: 'Toggle snapping', timelineOccurrences_one: '{{count}} timeline occurrence',
+    timelineOccurrences_other: '{{count}} timeline occurrences', highlightOccurrences: 'Highlight occurrences',
+    manuallyPositioned: 'Manually positioned', restoreGeneratedPosition: 'Restore generated position',
+    removeFromTimeline: 'Remove from timeline'
   } }
 };
 

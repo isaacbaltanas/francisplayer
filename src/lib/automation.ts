@@ -104,6 +104,26 @@ export const assignAutomationGroup = (
   };
 };
 
+export const addAutomationAssignment = (state: AutomationState, voiceClipId: string): AutomationState => {
+  if (state.assignments.some(item => item.voiceClipId === voiceClipId)) return state;
+  const first = (type: AutomationGroupType) => state.groups.find(item => item.type === type)?.id ?? '';
+  return {
+    ...state,
+    assignments: [...state.assignments, {
+      voiceClipId,
+      highGroupId: first('high'),
+      lowGroupId: first('low'),
+      fadeDownGroupId: first('fadeDown'),
+      fadeUpGroupId: first('fadeUp')
+    }]
+  };
+};
+
+export const removeAutomationAssignment = (state: AutomationState, voiceClipId: string): AutomationState => ({
+  ...state,
+  assignments: state.assignments.filter(item => item.voiceClipId !== voiceClipId)
+});
+
 const settingsFor = (state: AutomationState, assignment: AutomationAssignment, fallback: AudioSettings): AudioSettings => ({
   ...fallback,
   musicGainDb: percentToDb(getGroup(state, assignment.highGroupId)?.value ?? dbToPercent(fallback.musicGainDb)),

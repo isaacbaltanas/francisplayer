@@ -2,6 +2,26 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.4.0] - 2026-10-30
+
+### Añadido
+
+- Arrastre horizontal manual de cualquier corte de música o voz en la línea de tiempo.
+- Arrastre directo desde las bibliotecas hasta una posición concreta de la línea de tiempo.
+- Imán configurable con ajuste inteligente, a cuadrícula, a bordes o a la posición generada original.
+- Guía fluorescente y lectura temporal durante el ajuste magnético.
+- `Control` para omitir temporalmente el imán durante un arrastre.
+- Menú contextual para restaurar la posición automática o retirar un corte del montaje.
+- Indicador de uso y contador de apariciones junto a cada archivo de las bibliotecas.
+- Preferencia para bloquear archivos ya utilizados o permitir reutilizarlos varias veces.
+- Selección de uno o varios archivos para destacar todas sus apariciones y atenuar el resto del montaje.
+- Pruebas automáticas de ajuste magnético, bordes, cuadrícula y límites.
+
+### Cambiado
+
+- Los huecos de música se recalculan al mover, añadir o retirar cortes manualmente.
+- Cada corte conserva su posición generada para poder regresar a ella posteriormente.
+
 ## [0.3.0] - 2026-10-30
 
 ### Añadido
