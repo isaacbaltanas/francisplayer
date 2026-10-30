@@ -52,9 +52,11 @@ export interface AudioAnalysis {
 
 export interface ArrangementSettings {
   targetDurationMs: number;
+  durationFromVoices?: boolean;
   musicOrder: OrderMode;
   voiceOrder: OrderMode;
   repeatMusic: boolean;
+  musicFillMode?: 'silence' | 'repeat' | 'random';
   voicePlacement: VoicePlacement;
   voiceIntervalMs: number;
   allowVoiceOverlap: boolean;

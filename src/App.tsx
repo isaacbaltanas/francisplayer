@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
-import { createArrangement, rebuildMissingMusic } from './lib/arrangement';
+import { createArrangement, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
 import { addAutomationAssignment, createAutomationState, removeAutomationAssignment, syncDefaultAutomationGroups } from './lib/automation';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
@@ -18,9 +18,11 @@ import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, 
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
+  durationFromVoices: false,
   musicOrder: 'sequential',
   voiceOrder: 'sequential',
   repeatMusic: true,
+  musicFillMode: 'repeat',
   voicePlacement: 'interval',
   voiceIntervalMs: 30_000,
   allowVoiceOverlap: false,
@@ -175,6 +177,7 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
             event.dataTransfer.setData('application/x-francis-asset', JSON.stringify({ assetId: asset.id, kind: asset.kind }));
           }}>
         <button className={`preview-button ${activePreview === asset.id ? 'active' : ''}`} onClick={() => onPreview(asset)}
+          title={t('previewFile')}
           aria-label={t(activePreview === asset.id ? 'pause' : 'play')}>
           {activePreview === asset.id ? '■' : '▶'}
         </button>
@@ -219,6 +222,7 @@ interface SettingsPanelProps {
   editingPreferences: EditingPreferences;
   mounted: boolean;
   canMount: boolean;
+  voiceAssets: MediaAsset[];
   onChange: (patch: Partial<ArrangementSettings>) => void;
   onAudioChange: (patch: Partial<AudioSettings>) => void;
   onAutomationChange: (state: AutomationState) => void;
@@ -226,10 +230,21 @@ interface SettingsPanelProps {
   onMount: () => void;
 }
 
-function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, onChange, onAudioChange, onAutomationChange, onEditingPreferencesChange, onMount }: SettingsPanelProps) {
+function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, voiceAssets, onChange, onAudioChange, onAutomationChange, onEditingPreferencesChange, onMount }: SettingsPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
-  const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
+  const targetMinutes = Math.round(settings.targetDurationMs / 6_000) / 10;
+  const targetSliderMax = Math.max(360, Math.ceil(voiceScheduleDuration(voiceAssets, 300_000, settings.allowVoiceOverlap) / 60_000));
+  const changeTarget = (targetDurationMs: number) => onChange({
+    targetDurationMs,
+    voiceIntervalMs: intervalForVoiceDuration(voiceAssets, targetDurationMs, settings.allowVoiceOverlap)
+  });
+  const changeInterval = (voiceIntervalMs: number) => onChange({
+    voiceIntervalMs,
+    targetDurationMs: voiceAssets.length
+      ? voiceScheduleDuration(voiceAssets, voiceIntervalMs, settings.allowVoiceOverlap)
+      : settings.targetDurationMs
+  });
 
   return <aside className="settings-panel">
     <div className="panel-heading settings-title">
@@ -245,10 +260,19 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
     {tab === 'arrangement' && <div className="settings-grid">
       <label className="field full">
         <span>{t('targetDuration')}</span>
-        <div className="number-field"><input type="number" min="1" max="360" value={targetMinutes}
-          onChange={(event) => onChange({ targetDurationMs: Math.max(1, Number(event.target.value)) * 60_000 })} />
+        <div className="linked-range"><input type="range" min="1" max={targetSliderMax} step="0.1" value={targetMinutes}
+          onChange={(event) => changeTarget(Math.max(1, Number(event.target.value)) * 60_000)} />
+        <div className="number-field"><input type="number" min="1" max={targetSliderMax} step="0.1" value={targetMinutes}
+          onChange={(event) => changeTarget(Math.max(1, Number(event.target.value)) * 60_000)} />
           <em>{t('minutes')}</em></div>
+        </div>
       </label>
+
+      <Toggle label={t('durationFromVoices')} checked={settings.durationFromVoices ?? false} onChange={(durationFromVoices) => onChange({
+        durationFromVoices,
+        ...(durationFromVoices ? { voicePlacement: 'interval' as const } : {}),
+        ...(durationFromVoices && voiceAssets.length ? { targetDurationMs: voiceScheduleDuration(voiceAssets, settings.voiceIntervalMs, settings.allowVoiceOverlap) } : {})
+      })} />
 
       <Segmented label={t('musicOrder')} value={settings.musicOrder} options={[
         ['sequential', t('sequential')], ['random', t('random')]
@@ -258,7 +282,9 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         ['sequential', t('sequential')], ['random', t('random')]
       ]} onChange={(value) => onChange({ voiceOrder: value as ArrangementSettings['voiceOrder'] })} />
 
-      <Toggle label={t('repeatMusic')} checked={settings.repeatMusic} onChange={(repeatMusic) => onChange({ repeatMusic })} />
+      <Segmented label={t('musicFill')} value={settings.musicFillMode ?? (settings.repeatMusic ? 'repeat' : 'silence')} full options={[
+        ['silence', t('doNotFill')], ['repeat', t('fillRepeating')], ['random', t('fillRandom')]
+      ]} onChange={(value) => onChange({ musicFillMode: value as NonNullable<ArrangementSettings['musicFillMode']>, repeatMusic: value !== 'silence' })} />
 
       <Segmented label={t('voicePlacement')} value={settings.voicePlacement} full options={[
         ['interval', t('interval')], ['uniform', t('uniform')]
@@ -266,12 +292,20 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
 
       {settings.voicePlacement === 'interval' && <label className="field full">
         <span>{t('intervalSeconds')}</span>
-        <div className="number-field"><input type="number" min="1" max="3600" value={settings.voiceIntervalMs / 1000}
-          onChange={(event) => onChange({ voiceIntervalMs: Math.max(1, Number(event.target.value)) * 1000 })} />
+        <div className="linked-range"><input type="range" min="0" max="300" step="0.1" value={settings.voiceIntervalMs / 1000}
+          onChange={(event) => changeInterval(Math.max(0, Number(event.target.value)) * 1000)} />
+        <div className="number-field"><input type="number" min="0" max="300" step="0.1" value={settings.voiceIntervalMs / 1000}
+          onChange={(event) => changeInterval(Math.max(0, Number(event.target.value)) * 1000)} />
           <em>{t('seconds')}</em></div>
+        </div>
       </label>}
 
-      <Toggle label={t('allowOverlap')} checked={settings.allowVoiceOverlap} onChange={(allowVoiceOverlap) => onChange({ allowVoiceOverlap })} />
+      <Toggle label={t('allowOverlap')} checked={settings.allowVoiceOverlap} onChange={(allowVoiceOverlap) => onChange({
+        allowVoiceOverlap,
+        ...(settings.durationFromVoices
+          ? { targetDurationMs: voiceScheduleDuration(voiceAssets, settings.voiceIntervalMs, allowVoiceOverlap) }
+          : { voiceIntervalMs: intervalForVoiceDuration(voiceAssets, settings.targetDurationMs, allowVoiceOverlap) })
+      })} />
 
       <label className="field seed-field">
         <span>{t('seed')}</span>
@@ -474,7 +508,7 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
       }} onPointerUp={() => setFadeDrag(null)}>◣</button>}
     <span>{clip.kind === 'missing' ? t('missingMusic') : clip.name}</span>
     {clip.kind !== 'missing' && <small>{formatDuration(clip.durationMs)}</small>}
-    {clip.manuallyPositioned && <i className="manual-position-dot" title={t('manuallyPositioned')} />}
+    {clip.manuallyPositioned && <i className="manual-position-dot" title={t('manuallyPositioned')}>⚓</i>}
     {menu && <div className="clip-menu" style={{ left: menu.x, top: menu.y }} onPointerDown={(event) => event.stopPropagation()}>
       <button onClick={(event) => { event.stopPropagation(); onMove(clip.id, clip.kind, clip.generatedStartMs, clip.generatedStartMs); setMenu(null); }}>↩ {t('restoreGeneratedPosition')}</button>
       <button className="danger" onClick={(event) => { event.stopPropagation(); onRemove(clip); setMenu(null); }}>× {t('removeFromTimeline')}</button>
@@ -630,6 +664,13 @@ export default function App() {
   const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
+  const musicSequence = useMemo(() => createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
+    activeMusicTabId, musicInsertion, settings.seed), [libraryTabs, music, activeMusicTabId, musicInsertion, settings.seed]);
+  const voiceSequence = useMemo(() => createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'voice'), voices,
+    activeVoiceTabId, voiceInsertion, settings.seed + 10_000), [libraryTabs, voices, activeVoiceTabId, voiceInsertion, settings.seed]);
+  const scheduledVoiceSequence = useMemo(() => settings.voiceOrder === 'random'
+    ? shuffleWithSeed(voiceSequence, settings.seed + 10_000) : voiceSequence,
+  [voiceSequence, settings.voiceOrder, settings.seed]);
   const assetsRef = useRef<MediaAsset[]>([]);
   assetsRef.current = allAssets;
   const player = useTimelinePlayer(arrangement, allAssets, audioSettings, automation, libraryTabs);
@@ -648,6 +689,15 @@ export default function App() {
   }, []); // URLs are intentionally cleaned only when the app closes.
 
   useEffect(() => window.francisDesktop?.onImportProgress(setImportProgress), []);
+
+  useEffect(() => {
+    if (!scheduledVoiceSequence.length || settings.voicePlacement !== 'interval') return;
+    const patch = settings.durationFromVoices
+      ? { targetDurationMs: voiceScheduleDuration(scheduledVoiceSequence, settings.voiceIntervalMs, settings.allowVoiceOverlap) }
+      : { voiceIntervalMs: intervalForVoiceDuration(scheduledVoiceSequence, settings.targetDurationMs, settings.allowVoiceOverlap) };
+    const [key, value] = Object.entries(patch)[0] as ['targetDurationMs' | 'voiceIntervalMs', number];
+    if (Math.abs(settings[key] - value) > 50) setSettings(current => ({ ...current, ...patch }));
+  }, [scheduledVoiceSequence, settings.durationFromVoices, settings.voicePlacement, settings.voiceIntervalMs, settings.targetDurationMs, settings.allowVoiceOverlap]);
 
   const status = useMemo(() => arrangement ? formatDuration(arrangement.durationMs) : t('projectReady'), [arrangement, t]);
 
@@ -722,13 +772,35 @@ export default function App() {
 
   const mount = () => {
     player.stop();
-    const musicTabs = libraryTabs.filter(tab => tab.kind === 'music');
-    const voiceTabs = libraryTabs.filter(tab => tab.kind === 'voice');
-    const musicSequence = createInsertionSequence(musicTabs, music, activeMusicTabId, musicInsertion, settings.seed);
-    const voiceSequence = createInsertionSequence(voiceTabs, voices, activeVoiceTabId, voiceInsertion, settings.seed + 10_000);
     const next = createArrangement(musicSequence, voiceSequence, settings);
     setArrangement(next);
     setAutomation(createAutomationState(next, audioSettings));
+  };
+
+  const changeArrangementSettings = (patch: Partial<ArrangementSettings>) => {
+    player.stop();
+    const nextSettings = { ...settings, ...patch };
+    const nextMusicSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
+      activeMusicTabId, musicInsertion, nextSettings.seed);
+    const nextVoiceSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'voice'), voices,
+      activeVoiceTabId, voiceInsertion, nextSettings.seed + 10_000);
+    const nextScheduledVoices = nextSettings.voiceOrder === 'random'
+      ? shuffleWithSeed(nextVoiceSequence, nextSettings.seed + 10_000) : nextVoiceSequence;
+    if (nextSettings.durationFromVoices && nextScheduledVoices.length && ('allowVoiceOverlap' in patch || 'voicePlacement' in patch || 'voiceOrder' in patch || 'seed' in patch)) {
+      nextSettings.targetDurationMs = voiceScheduleDuration(nextScheduledVoices, nextSettings.voiceIntervalMs, nextSettings.allowVoiceOverlap);
+    }
+    setSettings(nextSettings);
+    if (!arrangement) return;
+    const generated = createArrangement(nextMusicSequence, nextVoiceSequence, nextSettings);
+    const next = { ...generated, voice: preserveManualVoicePositions(arrangement.voice, generated.voice, generated.durationMs) };
+    setArrangement(next);
+    setAutomation(current => {
+      if (!current) return current;
+      const clipIds = new Set(next.voice.map(clip => clip.id));
+      let synced = { ...current, assignments: current.assignments.filter(item => clipIds.has(item.voiceClipId)) };
+      next.voice.forEach(clip => { if (!synced.assignments.some(item => item.voiceClipId === clip.id)) synced = addAutomationAssignment(synced, clip.id); });
+      return synced;
+    });
   };
 
   const moveClip = (clipId: string, kind: TimelineClip['kind'], startMs: number, _guideMs: number | null) => {
@@ -842,7 +914,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.10.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.11.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -871,7 +943,9 @@ export default function App() {
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
       setMusic(project.assets.filter(asset => asset.kind === 'music'));
       setVoices(project.assets.filter(asset => asset.kind === 'voice'));
-      setSettings(project.settings); setAudioSettings({ ...defaultAudioSettings, ...project.audioSettings }); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
+      setSettings({ ...defaultSettings, ...project.settings,
+        musicFillMode: project.settings.musicFillMode ?? (project.settings.repeatMusic ? 'repeat' : 'silence') });
+      setAudioSettings({ ...defaultAudioSettings, ...project.audioSettings }); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
       setLibraryTabs(project.libraryTabs); setActiveMusicTabId(project.activeMusicTabId); setActiveVoiceTabId(project.activeVoiceTabId);
       setMusicInsertion(project.musicInsertion); setVoiceInsertion(project.voiceInsertion);
       setArrangement(project.arrangement); setAutomation(project.automation);
@@ -979,7 +1053,8 @@ export default function App() {
         </div>
         <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} editingPreferences={editingPreferences} mounted={Boolean(arrangement)}
           canMount={music.length + voices.length > 0}
-          onChange={(patch) => { player.stop(); setSettings(current => ({ ...current, ...patch })); setArrangement(null); setAutomation(null); }}
+          voiceAssets={scheduledVoiceSequence}
+          onChange={changeArrangementSettings}
           onAudioChange={(patch) => {
             setAudioSettings(current => ({ ...current, ...patch }));
             setAutomation(current => current ? syncDefaultAutomationGroups(current, patch) : current);

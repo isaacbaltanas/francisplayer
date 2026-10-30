@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createArrangement, shuffleWithSeed } from '../src/lib/arrangement';
+import { createArrangement, intervalForVoiceDuration, preserveManualVoicePositions, shuffleWithSeed, voiceScheduleDuration } from '../src/lib/arrangement';
 import { calculateDuckingDb, dbToGain } from '../src/lib/audio';
 import {
   calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
@@ -85,7 +85,32 @@ describe('arrangement engine', () => {
     const result = createArrangement([asset('song', 'music', 40_000)], [], { ...settings, repeatMusic: true });
     expect(result.music.map(clip => clip.durationMs)).toEqual([40_000, 40_000, 20_000]);
     expect(result.music[result.music.length - 1]?.truncated).toBe(true);
+    expect(result.music[result.music.length - 1]?.fadeOutMs).toBe(5_000);
     expect(result.warnings).not.toContain('missingMusic');
+  });
+
+  it('fills the missing duration with a deterministic random sequence', () => {
+    const result = createArrangement([asset('a', 'music', 40_000), asset('b', 'music', 40_000)], [],
+      { ...settings, targetDurationMs: 170_000, musicFillMode: 'random' });
+    expect(result.music.filter(clip => clip.kind === 'music')).toHaveLength(5);
+    expect(result.music[result.music.length - 1]).toMatchObject({ truncated: true, fadeOutMs: 5_000, durationMs: 10_000 });
+  });
+
+  it('keeps duration and interval controls mathematically linked', () => {
+    const voices = [asset('v1', 'voice', 5_000), asset('v2', 'voice', 5_000), asset('v3', 'voice', 5_000)];
+    const duration = voiceScheduleDuration(voices, 30_000, false);
+    expect(duration).toBe(95_000);
+    expect(intervalForVoiceDuration(voices, duration, false)).toBeCloseTo(30_000, -2);
+  });
+
+  it('preserves a manually anchored voice while automatic voices reflow', () => {
+    const before = createArrangement([], [asset('v1', 'voice', 5_000), asset('v2', 'voice', 5_000)], settings);
+    before.voice[0] = { ...before.voice[0], startMs: 12_345, manuallyPositioned: true };
+    const generated = createArrangement([], [asset('v1', 'voice', 5_000), asset('v2', 'voice', 5_000)],
+      { ...settings, targetDurationMs: 80_000, voiceIntervalMs: 20_000 });
+    const merged = preserveManualVoicePositions(before.voice, generated.voice, generated.durationMs);
+    expect(merged.find(clip => clip.assetId === 'v1')).toMatchObject({ startMs: 12_345, manuallyPositioned: true, generatedStartMs: 20_000 });
+    expect(merged.find(clip => clip.assetId === 'v2')?.startMs).toBe(40_000);
   });
 
   it('pushes voices apart when overlap is disabled', () => {

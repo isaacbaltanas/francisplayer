@@ -114,4 +114,12 @@ Los avisos y licencias del binario FFmpeg incluido se documentan en [THIRD_PARTY
 - Motor Web Audio con eco y reverberación escuchables en tiempo real.
 - Render equivalente de normalización y efectos durante la exportación.
 
+## Versión 0.11
+
+- Preescucha directa y claramente visible en cada archivo de las listas.
+- Relleno musical por repetición o selección aleatoria, con fade out final automático.
+- Duración calculada a partir de las locuciones e intervalo máximo configurable de 300 segundos.
+- Sliders enlazados que redistribuyen el montaje en tiempo real.
+- Las locuciones movidas manualmente quedan ancladas hasta que el usuario restaura su posición automática.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

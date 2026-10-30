@@ -56,8 +56,55 @@ const makeClip = (asset: MediaAsset, startMs: number, durationMs = asset.duratio
   sourceDurationMs: asset.durationMs,
   color: asset.color,
   libraryTabId: asset.libraryTabId,
-  truncated: durationMs < asset.durationMs
+  truncated: durationMs < asset.durationMs,
+  fadeOutMs: durationMs < asset.durationMs ? Math.min(5_000, durationMs) : undefined
 });
+
+export const voiceScheduleDuration = (assets: MediaAsset[], intervalMs: number, allowOverlap: boolean): number => {
+  let previousEnd = 0;
+  let scheduledStart = Math.max(0, intervalMs);
+  assets.filter(asset => asset.durationMs > 0).forEach(asset => {
+    const startMs = allowOverlap ? scheduledStart : Math.max(scheduledStart, previousEnd);
+    previousEnd = Math.max(previousEnd, startMs + asset.durationMs);
+    scheduledStart += Math.max(0, intervalMs);
+  });
+  return Math.max(1_000, previousEnd);
+};
+
+export const intervalForVoiceDuration = (assets: MediaAsset[], targetDurationMs: number, allowOverlap: boolean): number => {
+  if (!assets.length) return 0;
+  let low = 0;
+  let high = 300_000;
+  for (let index = 0; index < 24; index += 1) {
+    const middle = (low + high) / 2;
+    if (voiceScheduleDuration(assets, middle, allowOverlap) <= targetDurationMs) low = middle;
+    else high = middle;
+  }
+  return Math.round(low / 100) * 100;
+};
+
+export const preserveManualVoicePositions = (previous: TimelineClip[], generated: TimelineClip[], durationMs: number): TimelineClip[] => {
+  const queues = new Map<string, TimelineClip[]>();
+  previous.forEach(clip => {
+    const key = clip.assetId ?? clip.id;
+    queues.set(key, [...(queues.get(key) ?? []), clip]);
+  });
+  const used = new Set<string>();
+  const merged = generated.map(clip => {
+    const queue = queues.get(clip.assetId ?? clip.id) ?? [];
+    const old = queue.shift();
+    if (!old) return clip;
+    used.add(old.id);
+    if (!old.manuallyPositioned) return { ...clip, id: old.id, fadeInMs: old.fadeInMs, fadeOutMs: old.fadeOutMs ?? clip.fadeOutMs };
+    const startMs = Math.max(0, Math.min(old.startMs, durationMs - old.durationMs));
+    return { ...clip, id: old.id, startMs, durationMs: old.durationMs, sourceDurationMs: old.sourceDurationMs,
+      fadeInMs: old.fadeInMs, fadeOutMs: old.fadeOutMs, manuallyPositioned: true };
+  });
+  previous.filter(clip => clip.manuallyPositioned && !used.has(clip.id)).forEach(old => {
+    merged.push({ ...old, startMs: Math.max(0, Math.min(old.startMs, durationMs - old.durationMs)) });
+  });
+  return merged.sort((left, right) => left.startMs - right.startMs);
+};
 
 export const createArrangement = (
   musicAssets: MediaAsset[],
@@ -81,8 +128,11 @@ export const createArrangement = (
   } else {
     let cursor = 0;
     let cycle = 0;
+    const fillMode = settings.musicFillMode ?? (settings.repeatMusic ? 'repeat' : 'silence');
     while (cursor < durationMs) {
-      const sequence = ordered(validMusicAssets, settings.musicOrder, settings.seed + cycle);
+      const sequence = fillMode === 'random' && cycle > 0
+        ? shuffleWithSeed(validMusicAssets, settings.seed + cycle)
+        : ordered(validMusicAssets, settings.musicOrder, settings.seed + (settings.musicOrder === 'random' ? cycle : 0));
       for (const asset of sequence) {
         const remaining = durationMs - cursor;
         if (remaining <= 0) break;
@@ -90,7 +140,7 @@ export const createArrangement = (
         music.push(makeClip(asset, cursor, clipDuration));
         cursor += clipDuration;
       }
-      if (!settings.repeatMusic) break;
+      if (fillMode === 'silence') break;
       cycle += 1;
     }
     if (cursor < durationMs) {

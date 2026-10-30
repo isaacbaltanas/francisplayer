@@ -2,6 +2,25 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.11.0] - 2026-10-31
+
+### Añadido
+
+- Botón de preescucha más visible en cada archivo de música y locución.
+- Tres políticas cuando la música no cubre el programa: dejar silencio, repetir la lista o rellenar aleatoriamente.
+- Fade out local automático de cinco segundos en la última canción cuando debe recortarse para terminar exactamente con el programa.
+- Modo en el que la cantidad, duración e intervalo de las locuciones dictan la duración total.
+- Sliders enlazados para duración total e intervalo entre locuciones, de 0 a 300 segundos.
+- Redistribución de las locuciones y reconstrucción musical en tiempo real al modificar los controles.
+- Anclaje visible para las locuciones colocadas manualmente.
+
+### Comportamiento
+
+- Las locuciones ancladas conservan su posición absoluta al redistribuir; las demás se recolocan automáticamente.
+- Si el nuevo final deja un anclaje fuera del programa, se desplaza al último inicio válido.
+- El menú contextual permite devolver cualquier anclaje a su posición automática.
+- Los proyectos anteriores se abren con la política de relleno equivalente a su antigua opción de repetición.
+
 ## [0.10.0] - 2026-10-31
 
 ### Añadido
