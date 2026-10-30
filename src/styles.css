@@ -27,11 +27,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .brand { display: flex; align-items: center; gap: 14px; }
 .brand h1 { margin: 0; font-family: Georgia, serif; font-size: 25px; font-weight: 500; letter-spacing: -.4px; }
 .brand p { margin: 2px 0 0; color: var(--muted); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
-.brand-mark { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; gap: 2px; background: var(--accent); color: #24180c; }
-.brand-mark span { width: 2px; border-radius: 2px; background: currentColor; }
-.brand-mark span:nth-child(1), .brand-mark span:nth-child(5) { height: 9px; }
-.brand-mark span:nth-child(2), .brand-mark span:nth-child(4) { height: 17px; }
-.brand-mark span:nth-child(3) { height: 23px; }
+.brand-mark { width: 40px; height: 40px; display: block; object-fit: contain; filter: drop-shadow(0 2px 5px #0008); }
 .project-state { display: flex; align-items: center; gap: 12px; min-width: 260px; justify-content: center; }
 .project-state div { display: grid; }
 .project-state strong { font-size: 13px; font-weight: 600; }

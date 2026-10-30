@@ -14,6 +14,7 @@ import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
 import { normalizationAdjustmentDb } from './lib/audio';
+import appIconUrl from '../assets/icon.svg';
 import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
@@ -85,7 +86,7 @@ interface ProjectDocument {
 }
 
 function BrandMark() {
-  return <div className="brand-mark" aria-hidden="true"><span /><span /><span /><span /><span /></div>;
+  return <img className="brand-mark" src={appIconUrl} alt="" aria-hidden="true" />;
 }
 
 interface AssetListProps {
@@ -915,7 +916,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.11.2', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.12.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

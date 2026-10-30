@@ -122,4 +122,10 @@ Los avisos y licencias del binario FFmpeg incluido se documentan en [THIRD_PARTY
 - Sliders enlazados que redistribuyen el montaje en tiempo real.
 - Las locuciones movidas manualmente quedan ancladas hasta que el usuario restaura su posición automática.
 
+## Versión 0.12
+
+- Icono oficial coherente en la interfaz, ejecutables, ventanas, Dock, Alt-Tab y barra de tareas.
+- Recursos nativos ICNS para macOS e ICO para Windows derivados de una única marca SVG.
+- Identidad y metadatos de aplicación estables en ambos sistemas.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

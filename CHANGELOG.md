@@ -2,6 +2,19 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.12.0] - 2026-10-31
+
+### Añadido
+
+- Identidad visual oficial de Francis Player en SVG, PNG, ICNS e ICO.
+- Icono propio en el paquete macOS, Dock, selector de aplicaciones y panel Acerca de.
+- Icono y metadatos preparados para el ejecutable, ventanas, Alt-Tab y barra de tareas de Windows.
+- Identificador estable de aplicación para que Windows agrupe correctamente sus ventanas.
+
+### Cambiado
+
+- La interfaz utiliza el mismo recurso maestro que los iconos del sistema para mantener la marca consistente.
+
 ## [0.11.2] - 2026-10-31
 
 ### Corregido

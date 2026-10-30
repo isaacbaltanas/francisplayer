@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -11,6 +11,10 @@ import { scanImportPaths } from './importAudio.js';
 let mainWindow: BrowserWindow | null = null;
 let pendingProjectPath: string | null = null;
 let exportProcess: ChildProcess | null = null;
+const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
+
+app.setName('Francis Player');
+app.setAppUserModelId('com.francisplayer.app');
 
 const saveProject = async (payload: any, requestedPath?: string) => {
   let projectPath = requestedPath;
@@ -46,6 +50,7 @@ const createWindow = async () => {
     minHeight: 720,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
     backgroundColor: '#111315',
+    icon: nativeImage.createFromPath(iconPath),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -135,6 +140,14 @@ app.on('open-file', (event, filePath) => {
 });
 
 app.whenReady().then(async () => {
+  const icon = nativeImage.createFromPath(iconPath);
+  if (process.platform === 'darwin' && !icon.isEmpty()) app.dock?.setIcon(icon);
+  app.setAboutPanelOptions({
+    applicationName: 'Francis Player',
+    applicationVersion: app.getVersion(),
+    copyright: 'Estudio de montaje automático para megafonías',
+    iconPath
+  });
   const argumentProject = process.argv.find(argument => argument.toLowerCase().endsWith('.francis'));
   if (argumentProject) pendingProjectPath = argumentProject;
   await createWindow();
