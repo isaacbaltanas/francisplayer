@@ -55,6 +55,7 @@ const makeClip = (asset: MediaAsset, startMs: number, durationMs = asset.duratio
   durationMs,
   sourceDurationMs: asset.durationMs,
   color: asset.color,
+  libraryTabId: asset.libraryTabId,
   truncated: durationMs < asset.durationMs
 });
 

@@ -8,7 +8,7 @@ import {
 import type { ArrangementSettings, MediaAsset } from '../src/types';
 
 const asset = (id: string, kind: 'music' | 'voice', durationMs: number): MediaAsset => ({
-  id, kind, durationMs, name: id, sizeBytes: 1, path: id, previewUrl: id, color: '#fff'
+  id, kind, durationMs, name: id, sizeBytes: 1, path: id, previewUrl: id, color: '#fff', libraryTabId: `${kind}-1`
 });
 
 describe('audio automation', () => {

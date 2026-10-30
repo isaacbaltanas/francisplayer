@@ -2,6 +2,23 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.5.0] - 2026-10-30
+
+### Añadido
+
+- Varias pestañas independientes dentro de las bibliotecas de música y locuciones.
+- Creación, renombrado por doble clic, reordenación y eliminación de pestañas.
+- Una pista diferenciada y coloreada en la línea de tiempo por cada pestaña.
+- Activación individual de automatización local por pista.
+- Lógicas de inserción para la pestaña activa, todas las pestañas en orden, alternancia, aleatorio global y patrón personalizado.
+- Patrones humanos como `1, 2, 1, 3`, consumiendo todas las colas sin perder archivos.
+- Pruebas automáticas del analizador de patrones y de las secuencias entre listas.
+
+### Cambiado
+
+- Cada archivo y cada corte conservan la pestaña/pista de procedencia durante el montaje y la edición manual.
+- Los contadores y totales de biblioteca se calculan por la pestaña visible.
+
 ## [0.4.0] - 2026-10-30
 
 ### Añadido

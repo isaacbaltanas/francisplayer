@@ -70,4 +70,10 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - Contador de apariciones y destacado múltiple de cortes en la línea de tiempo.
 - Recalculo automático de los huecos de música tras cada edición.
 
+## Versión 0.5
+
+- Varias pestañas de música y voz, cada una convertida en su propia pista.
+- Creación, nombre, orden, eliminación y automatización local por pestaña.
+- Inserción de una lista, todas en orden, alternadas, aleatorias o mediante un patrón personalizado.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

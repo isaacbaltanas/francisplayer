@@ -26,7 +26,7 @@ const readDuration = (url: string) => new Promise<number>((resolve, reject) => {
   audio.src = url;
 });
 
-export const filesToAssets = async (files: File[], kind: MediaKind): Promise<MediaAsset[]> => {
+export const filesToAssets = async (files: File[], kind: MediaKind, libraryTabId: string): Promise<MediaAsset[]> => {
   return Promise.all(files.map(async (file, index) => {
     const previewUrl = URL.createObjectURL(file);
     try {
@@ -39,7 +39,8 @@ export const filesToAssets = async (files: File[], kind: MediaKind): Promise<Med
         sizeBytes: file.size,
         path: window.francisDesktop?.getPathForFile(file) ?? file.name,
         previewUrl,
-        color: colorForAsset(file.name)
+        color: colorForAsset(file.name),
+        libraryTabId
       };
     } catch (error) {
       URL.revokeObjectURL(previewUrl);

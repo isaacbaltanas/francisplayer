@@ -52,6 +52,18 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .panel-heading h2, .timeline-header h2 { margin: 2px 0 0; font-size: 17px; font-weight: 600; }
 .eyebrow { margin: 0; color: var(--accent); font-size: 8px; font-weight: 800; letter-spacing: .2em; }
 .count-pill { background: #282c30; border: 1px solid #363b40; color: #aeb4b9; min-width: 25px; height: 25px; border-radius: 13px; display: grid; place-items: center; font-size: 11px; }
+.library-tabs { display: flex; gap: 3px; min-height: 31px; padding: 0 10px 6px; overflow-x: auto; scrollbar-width: thin; }
+.library-tab { flex: none; display: flex; align-items: center; border: 1px solid #30363b; border-radius: 5px; background: #171b1e; }
+.library-tab.active { background: #292e32; border-color: #50575d; }
+.tab-select { max-width: 135px; height: 27px; display: flex; align-items: center; gap: 5px; border: 0; background: transparent; color: #879096; font-size: 8px; white-space: nowrap; cursor: pointer; }
+.library-tab.active .tab-select { color: #eef1f1; }
+.tab-select i { flex: none; width: 6px; height: 6px; border-radius: 50%; }
+.tab-select small { color: #626a70; font: 7px ui-monospace, monospace; }
+.tab-actions { display: flex; padding-right: 3px; }
+.tab-actions button, .add-tab { width: 18px; height: 21px; padding: 0; border: 0; border-radius: 3px; background: transparent; color: #6f777c; font-size: 9px; cursor: pointer; }
+.tab-actions button:hover, .tab-actions button.active, .add-tab:hover { color: #ffc16f; background: #3b3329; }
+.tab-actions button:disabled { opacity: .2; cursor: default; }
+.add-tab { flex: none; width: 27px; height: 28px; border: 1px dashed #454c51; }
 .import-button { margin: 0 18px; height: 39px; border: 1px dashed #485057; background: #202429; border-radius: 7px; color: #ccd1d5; cursor: pointer; transition: .18s ease; }
 .import-button:hover { border-color: var(--accent); color: var(--accent-bright); background: #282621; }
 .plus { color: var(--accent); margin-right: 6px; font-size: 18px; vertical-align: -1px; }
@@ -79,6 +91,10 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .asset-info strong { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 550; }
 .asset-info span { font: 8px ui-monospace, SFMono-Regular, Menlo, monospace; color: #737b82; }
 .asset-footer { min-height: 35px; display: flex; justify-content: space-between; align-items: center; padding: 0 17px; background: #15181a; border-top: 1px solid #282d31; color: #70777d; font-size: 9px; }
+.insertion-logic { min-height: 34px; display: flex; gap: 5px; align-items: center; padding: 4px 9px; border-top: 1px solid #292e32; background: #1a1e21; }
+.insertion-logic label { flex: 1; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 6px; color: #747d83; font-size: 7px; text-transform: uppercase; letter-spacing: .06em; }
+.insertion-logic select, .insertion-logic input { min-width: 0; height: 25px; border: 1px solid #383f44; border-radius: 4px; background: #141719; color: #adb4b8; font-size: 8px; padding: 0 5px; }
+.insertion-logic input { width: 88px; }
 
 .settings-panel { padding-bottom: 12px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .settings-title { border-bottom: 1px solid #292e32; padding-bottom: 16px; }
@@ -149,6 +165,8 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .timeline-shell { display: grid; grid-template-columns: 104px minmax(0, 1fr); min-height: 0; flex: 1; }
 .track-labels { background: #15181b; border-right: 1px solid #2c3135; color: #7c848a; font-size: 8px; font-weight: 700; letter-spacing: .1em; }
 .track-labels > div { height: 54px; display: flex; align-items: center; padding: 0 12px; border-bottom: 1px solid #292e32; }
+.track-labels .track-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.track-labels > div > small { margin-left: auto; color: #71f6ca; }
 .track-labels .ruler-spacer { height: 34px; }
 .track-labels .automation-track-label { height: 112px; align-items: flex-start; padding-top: 18px; }
 .track-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; }.voice-dot { background: #de6ea8; }.music-dot { background: #4f8cff; }

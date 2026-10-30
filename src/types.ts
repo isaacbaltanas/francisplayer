@@ -2,6 +2,20 @@ export type MediaKind = 'music' | 'voice';
 export type OrderMode = 'sequential' | 'random';
 export type VoicePlacement = 'interval' | 'uniform';
 export type SnapMode = 'smart' | 'grid' | 'edges' | 'original';
+export type InsertionMode = 'active' | 'all' | 'roundRobin' | 'random' | 'custom';
+
+export interface LibraryTab {
+  id: string;
+  kind: MediaKind;
+  name: string;
+  color: string;
+  localAutomationEnabled: boolean;
+}
+
+export interface InsertionConfig {
+  mode: InsertionMode;
+  customPattern: string;
+}
 
 export interface MediaAsset {
   id: string;
@@ -12,6 +26,7 @@ export interface MediaAsset {
   path: string;
   previewUrl: string;
   color: string;
+  libraryTabId: string;
 }
 
 export interface ArrangementSettings {
@@ -71,6 +86,7 @@ export interface TimelineClip {
   color: string;
   truncated?: boolean;
   manuallyPositioned?: boolean;
+  libraryTabId?: string;
 }
 
 export interface Arrangement {

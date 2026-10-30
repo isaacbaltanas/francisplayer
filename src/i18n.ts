@@ -40,7 +40,11 @@ const resources = {
     toggleSnap: 'Activar o desactivar imán', timelineOccurrences_one: '{{count}} aparición en la línea de tiempo',
     timelineOccurrences_other: '{{count}} apariciones en la línea de tiempo', highlightOccurrences: 'Destacar apariciones',
     manuallyPositioned: 'Posición modificada manualmente', restoreGeneratedPosition: 'Restaurar posición automática',
-    removeFromTimeline: 'Eliminar de la línea de tiempo'
+    removeFromTimeline: 'Eliminar de la línea de tiempo',
+    newList: 'Nueva lista', renameList: 'Nombre de la lista', deleteList: 'Eliminar lista', moveListLeft: 'Mover lista a la izquierda',
+    moveListRight: 'Mover lista a la derecha', localAutomation: 'Automatización local de esta pista', insertionLogic: 'Agregar todo',
+    insertActive: 'Solo esta lista', insertAll: 'Todas las listas, en orden', insertRoundRobin: 'Alternar una de cada lista',
+    insertRandom: 'Completamente aleatorio', insertCustom: 'Patrón personalizado'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -80,7 +84,11 @@ const resources = {
     toggleSnap: 'Toggle snapping', timelineOccurrences_one: '{{count}} timeline occurrence',
     timelineOccurrences_other: '{{count}} timeline occurrences', highlightOccurrences: 'Highlight occurrences',
     manuallyPositioned: 'Manually positioned', restoreGeneratedPosition: 'Restore generated position',
-    removeFromTimeline: 'Remove from timeline'
+    removeFromTimeline: 'Remove from timeline',
+    newList: 'New list', renameList: 'List name', deleteList: 'Delete list', moveListLeft: 'Move list left',
+    moveListRight: 'Move list right', localAutomation: 'Local automation for this track', insertionLogic: 'Add all',
+    insertActive: 'This list only', insertAll: 'All lists, in order', insertRoundRobin: 'Alternate one from each list',
+    insertRandom: 'Completely random', insertCustom: 'Custom pattern'
   } }
 };
 
