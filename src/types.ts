@@ -147,6 +147,8 @@ export interface EditingPreferences {
   verifyFileIntegrity: boolean;
   analyzeLoudnessOnImport: boolean;
   showFileLoudness: boolean;
+  automationDisplayUnit: AutomationDisplayUnit;
+  showAutomations: boolean;
 }
 
 export interface QuarantineItem {

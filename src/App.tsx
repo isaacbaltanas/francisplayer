@@ -56,7 +56,9 @@ const defaultEditingPreferences: EditingPreferences = {
   allowAssetReuse: true,
   verifyFileIntegrity: true,
   analyzeLoudnessOnImport: true,
-  showFileLoudness: true
+  showFileLoudness: true,
+  automationDisplayUnit: 'percent',
+  showAutomations: true
 };
 
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
@@ -354,11 +356,18 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
     </div></div>}
 
     {tab === 'automation' && <div className="settings-tab-content automation-settings">
-      <Segmented label={t('displayLevelsAs')} value={automation?.displayUnit ?? 'percent'} full options={[
+      <Segmented label={t('displayLevelsAs')} value={automation?.displayUnit ?? editingPreferences.automationDisplayUnit} full options={[
         ['percent', t('percentage')], ['db', 'dB']
-      ]} onChange={(value) => automation && onAutomationChange({ ...automation, displayUnit: value as AutomationState['displayUnit'] })} />
-      <Toggle label={t('showAutomations')} checked={automation?.visible ?? true}
-        onChange={(visible) => automation && onAutomationChange({ ...automation, visible })} />
+      ]} onChange={(value) => {
+        const displayUnit = value as AutomationState['displayUnit'];
+        onEditingPreferencesChange({ automationDisplayUnit: displayUnit });
+        if (automation) onAutomationChange({ ...automation, displayUnit });
+      }} />
+      <Toggle label={t('showAutomations')} checked={automation?.visible ?? editingPreferences.showAutomations}
+        onChange={(visible) => {
+          onEditingPreferencesChange({ showAutomations: visible });
+          if (automation) onAutomationChange({ ...automation, visible });
+        }} />
       <div className="shortcut-card"><kbd>⇧ Shift</kbd><p>{t('shiftAutomationHint')}</p></div>
       <p className="settings-help">{t('automationSettingsHelp')}</p>
     </div>}
@@ -776,7 +785,9 @@ export default function App() {
     player.stop();
     const next = createArrangement(musicSequence, voiceSequence, settings);
     setArrangement(next);
-    setAutomation(createAutomationState(next, audioSettings));
+    setAutomation({ ...createAutomationState(next, audioSettings),
+      displayUnit: editingPreferences.automationDisplayUnit,
+      visible: editingPreferences.showAutomations });
   };
 
   const changeArrangementSettings = (patch: Partial<ArrangementSettings>) => {
@@ -916,7 +927,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.12.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.12.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

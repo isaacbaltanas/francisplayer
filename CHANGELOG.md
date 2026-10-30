@@ -2,6 +2,14 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.12.1] - 2026-10-31
+
+### Corregido
+
+- «Mostrar niveles como» y «Mostrar automatizaciones» funcionan también antes de montar el programa.
+- Las dos preferencias se guardan en el proyecto y se aplican al crear o volver a crear la automatización.
+- Los proyectos anteriores reciben los valores predeterminados compatibles al abrirse.
+
 ## [0.12.0] - 2026-10-31
 
 ### Añadido
