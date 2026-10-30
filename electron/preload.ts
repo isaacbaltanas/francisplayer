@@ -2,9 +2,14 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 let pendingProjectPath: string | null = null;
 const openCallbacks = new Set<(projectPath: string) => void>();
+type MenuCommand = 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export';
+const menuCallbacks = new Set<(command: MenuCommand) => void>();
 ipcRenderer.on('project:open-requested', (_event, projectPath: string) => {
   if (openCallbacks.size === 0) pendingProjectPath = projectPath;
   openCallbacks.forEach(callback => callback(projectPath));
+});
+ipcRenderer.on('menu:command', (_event, command: MenuCommand) => {
+  menuCallbacks.forEach(callback => callback(command));
 });
 
 contextBridge.exposeInMainWorld('francisDesktop', {
@@ -16,6 +21,10 @@ contextBridge.exposeInMainWorld('francisDesktop', {
     openCallbacks.add(callback);
     if (pendingProjectPath) { const next = pendingProjectPath; pendingProjectPath = null; queueMicrotask(() => callback(next)); }
     return () => { openCallbacks.delete(callback); };
+  },
+  onMenuCommand: (callback: (command: MenuCommand) => void) => {
+    menuCallbacks.add(callback);
+    return () => { menuCallbacks.delete(callback); };
   },
   exportAudio: (payload: unknown, options: unknown) => ipcRenderer.invoke('audio:export', payload, options),
   cancelExport: () => ipcRenderer.invoke('audio:cancel-export'),

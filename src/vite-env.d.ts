@@ -7,6 +7,7 @@ interface Window {
     saveProject: (payload: unknown, projectPath?: string) => Promise<string | null>;
     openProject: (projectPath?: string) => Promise<{ projectPath: string; project: any } | null>;
     onOpenProject: (callback: (projectPath: string) => void) => () => void;
+    onMenuCommand: (callback: (command: 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export') => void) => () => void;
     exportAudio: (payload: unknown, options: unknown) => Promise<string | null>;
     cancelExport: () => Promise<boolean>;
     onExportProgress: (callback: (progress: number) => void) => () => void;

@@ -128,4 +128,10 @@ Los avisos y licencias del binario FFmpeg incluido se documentan en [THIRD_PARTY
 - Recursos nativos ICNS para macOS e ICO para Windows derivados de una única marca SVG.
 - Identidad y metadatos de aplicación estables en ambos sistemas.
 
+## Versión 0.13
+
+- Edición gráfica o numérica de la mezcla y el ducking.
+- Pista de previsualización con segmentos, puntos, locución, onda y valores editables mediante arrastre.
+- Menú Archivo nativo y equivalente en macOS y Windows para todas las operaciones de proyecto.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

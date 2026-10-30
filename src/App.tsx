@@ -10,6 +10,7 @@ import { AutomationEditor } from './components/AutomationEditor';
 import { TrackAutomationLane } from './components/TrackAutomationLane';
 import { ExportDialog } from './components/ExportDialog';
 import { ImportLogDialog, QuarantineDialog } from './components/ImportCenterDialog';
+import { MixDuckingGraph } from './components/MixDuckingGraph';
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
@@ -58,7 +59,8 @@ const defaultEditingPreferences: EditingPreferences = {
   analyzeLoudnessOnImport: true,
   showFileLoudness: true,
   automationDisplayUnit: 'percent',
-  showAutomations: true
+  showAutomations: true,
+  mixEditorMode: 'values'
 };
 
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
@@ -317,18 +319,21 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       </label>
     </div>}
 
-    {tab === 'audio' && <div className="settings-tab-content"><div className="audio-settings-heading"><h3>{t('audioMix')}</h3></div>
-    <div className="audio-settings-grid">
-      <DbField label={t('musicLevel')} value={audioSettings.musicGainDb}
-        onChange={(musicGainDb) => onAudioChange({ musicGainDb })} />
-      <DbField label={t('voiceLevel')} value={audioSettings.voiceGainDb}
-        onChange={(voiceGainDb) => onAudioChange({ voiceGainDb })} />
-      <DbField label={t('duckingLevel')} value={audioSettings.duckingGainDb} min={-80} max={0}
-        onChange={(duckingGainDb) => onAudioChange({ duckingGainDb })} />
-      <MsField label={t('fadeDown')} value={audioSettings.fadeDownMs}
-        onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
-      <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs}
-        onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
+    {tab === 'audio' && <div className="settings-tab-content"><div className="audio-settings-heading">
+      <h3>{t('audioMix')}</h3>
+      <div className="audio-mode-switch"><Segmented label={t('editMode')} value={editingPreferences.mixEditorMode} options={[
+        ['values', t('valuesMode')], ['graphic', t('graphicMode')]
+      ]} onChange={(value) => onEditingPreferencesChange({ mixEditorMode: value as EditingPreferences['mixEditorMode'] })} /></div>
+    </div>
+    {editingPreferences.mixEditorMode === 'values' ? <div className="audio-settings-grid mix-values-grid">
+      <DbField label={t('musicLevel')} value={audioSettings.musicGainDb} onChange={(musicGainDb) => onAudioChange({ musicGainDb })} />
+      <DbField label={t('voiceLevel')} value={audioSettings.voiceGainDb} onChange={(voiceGainDb) => onAudioChange({ voiceGainDb })} />
+      <DbField label={t('duckingLevel')} value={audioSettings.duckingGainDb} min={-80} max={0} onChange={(duckingGainDb) => onAudioChange({ duckingGainDb })} />
+      <MsField label={t('fadeDown')} value={audioSettings.fadeDownMs} onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
+      <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs} onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
+    </div> : <MixDuckingGraph settings={audioSettings} onChange={onAudioChange} />}
+    <div className="audio-processing-heading"><h3>{t('audioProcessing')}</h3></div>
+    <div className="audio-settings-grid audio-processing-grid">
       <Toggle label={t('normalizeClips')} checked={audioSettings.normalizeClips ?? false}
         onChange={(normalizeClips) => onAudioChange({ normalizeClips })} />
       <DbField label={t('normalizationTarget')} value={audioSettings.normalizationTargetLufs ?? -23} min={-30} max={-5}
@@ -927,7 +932,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.12.1', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.13.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1001,13 +1006,16 @@ export default function App() {
 
   useEffect(() => {
     const removeListener = window.francisDesktop?.onOpenProject(path => { void openProject(path); });
-    const keyboard = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.key.toLowerCase() === 's') { event.preventDefault(); void saveProject(event.shiftKey); }
-      if (event.key.toLowerCase() === 'o') { event.preventDefault(); void openProject(); }
-    };
-    window.addEventListener('keydown', keyboard);
-    return () => { removeListener?.(); window.removeEventListener('keydown', keyboard); };
+    const removeMenuListener = window.francisDesktop?.onMenuCommand(command => {
+      if (command === 'new') newProject();
+      if (command === 'open') void openProject();
+      if (command === 'save') void saveProject(false);
+      if (command === 'saveAs') void saveProject(true);
+      if (command === 'quarantine') setQuarantineOpen(true);
+      if (command === 'importLog') setImportLogOpen(true);
+      if (command === 'export' && arrangement) setExportOpen(true);
+    });
+    return () => { removeListener?.(); removeMenuListener?.(); };
   });
 
   return <div className="app-shell">

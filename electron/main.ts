@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -15,6 +15,40 @@ const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
 
 app.setName('Francis Player');
 app.setAppUserModelId('com.francisplayer.app');
+
+type MenuCommand = 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export';
+const sendMenuCommand = (command: MenuCommand) => mainWindow?.webContents.send('menu:command', command);
+const installApplicationMenu = () => {
+  const fileMenu: MenuItemConstructorOptions = {
+    label: 'Archivo',
+    submenu: [
+      { label: 'Nuevo proyecto', accelerator: 'CmdOrCtrl+N', click: () => sendMenuCommand('new') },
+      { label: 'Abrir…', accelerator: 'CmdOrCtrl+O', click: () => sendMenuCommand('open') },
+      { type: 'separator' },
+      { label: 'Guardar', accelerator: 'CmdOrCtrl+S', click: () => sendMenuCommand('save') },
+      { label: 'Guardar como…', accelerator: 'CmdOrCtrl+Shift+S', click: () => sendMenuCommand('saveAs') },
+      { type: 'separator' },
+      { label: 'Cuarentena…', click: () => sendMenuCommand('quarantine') },
+      { label: 'Registro de importación…', click: () => sendMenuCommand('importLog') },
+      { type: 'separator' },
+      { label: 'Exportar audio…', accelerator: 'CmdOrCtrl+E', click: () => sendMenuCommand('export') },
+      { type: 'separator' },
+      process.platform === 'darwin' ? { role: 'close', label: 'Cerrar ventana' } : { role: 'quit', label: 'Salir' }
+    ]
+  };
+  const template: MenuItemConstructorOptions[] = [fileMenu,
+    { label: 'Edición', submenu: [{ role: 'undo', label: 'Deshacer' }, { role: 'redo', label: 'Rehacer' }, { type: 'separator' },
+      { role: 'cut', label: 'Cortar' }, { role: 'copy', label: 'Copiar' }, { role: 'paste', label: 'Pegar' }, { role: 'selectAll', label: 'Seleccionar todo' }] },
+    { label: 'Visualización', submenu: [{ role: 'reload', label: 'Recargar' }, { role: 'togglefullscreen', label: 'Pantalla completa' }] },
+    { label: 'Ventana', submenu: [{ role: 'minimize', label: 'Minimizar' }, { role: 'zoom', label: 'Zoom' }, { role: 'front', label: 'Traer todo al frente' }] }
+  ];
+  if (process.platform === 'darwin') template.unshift({ label: app.name, submenu: [
+    { role: 'about', label: 'Acerca de Francis Player' }, { type: 'separator' },
+    { role: 'hide', label: 'Ocultar Francis Player' }, { role: 'hideOthers', label: 'Ocultar las demás' }, { role: 'unhide', label: 'Mostrar todo' },
+    { type: 'separator' }, { role: 'quit', label: 'Salir de Francis Player' }
+  ] });
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+};
 
 const saveProject = async (payload: any, requestedPath?: string) => {
   let projectPath = requestedPath;
@@ -148,6 +182,7 @@ app.whenReady().then(async () => {
     copyright: 'Estudio de montaje automático para megafonías',
     iconPath
   });
+  installApplicationMenu();
   const argumentProject = process.argv.find(argument => argument.toLowerCase().endsWith('.francis'));
   if (argumentProject) pendingProjectPath = argumentProject;
   await createWindow();

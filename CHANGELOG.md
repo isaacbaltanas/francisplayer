@@ -2,6 +2,22 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.13.0] - 2026-10-31
+
+### Añadido
+
+- Selector Valores/Gráfico dentro de «Mezcla y ducking».
+- Editor gráfico con pista musical, clip de locución, onda, segmentos, puntos y etiquetas de dB y milisegundos.
+- Edición mediante arrastre del nivel musical, nivel de voz, nivel de ducking y duraciones de bajada y recuperación.
+- El modo de edición elegido se guarda dentro del proyecto.
+- Menú nativo «Archivo» en macOS y Windows con Nuevo, Abrir, Guardar, Guardar como, Exportar y Salir/Cerrar.
+- Atajos nativos para todas las operaciones principales del proyecto.
+
+### Cambiado
+
+- El editor gráfico reutiliza los mismos colores y parámetros que las automatizaciones reales de la línea de tiempo.
+- Los ajustes gráficos y numéricos permanecen completamente sincronizados.
+
 ## [0.12.1] - 2026-10-31
 
 ### Corregido

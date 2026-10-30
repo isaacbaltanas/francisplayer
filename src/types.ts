@@ -149,6 +149,7 @@ export interface EditingPreferences {
   showFileLoudness: boolean;
   automationDisplayUnit: AutomationDisplayUnit;
   showAutomations: boolean;
+  mixEditorMode: 'values' | 'graphic';
 }
 
 export interface QuarantineItem {
