@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferCollectionName } from '../electron/importAudio';
+import { inferCollectionName, parseLoudnessReport } from '../electron/importAudio';
 
 describe('mass import naming', () => {
   it('uses the most common speaker name and removes production words', () => {
@@ -12,5 +12,12 @@ describe('mass import naming', () => {
 
   it('falls back to the folder when names have no useful common token', () => {
     expect(inferCollectionName(['coche.wav', 'seguro.wav'], '/Audio/Locutor Ana')).toBe('Locutor Ana');
+  });
+
+  it('parses EBU R128 values and limits normalization by true peak', () => {
+    const report = `Summary:\n I: -20.0 LUFS\n LRA: 4.2 LU\n True peak:\n Peak: -2.0 dBFS\n Overall\n Peak level dB: -2.4\n RMS level dB: -23.1`;
+    expect(parseLoudnessReport(report, -14, -1)).toMatchObject({
+      integratedLufs: -20, loudnessRangeLu: 4.2, truePeakDbtp: -2, recommendedGainDb: 1
+    });
   });
 });

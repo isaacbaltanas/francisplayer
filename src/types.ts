@@ -37,6 +37,17 @@ export interface MediaAsset {
   waveform: number[];
   fingerprint?: string;
   integrity?: 'unchecked' | 'valid' | 'warning';
+  analysis?: AudioAnalysis;
+}
+
+export interface AudioAnalysis {
+  integratedLufs: number;
+  loudnessRangeLu: number;
+  truePeakDbtp: number;
+  samplePeakDb: number;
+  rmsDb: number;
+  recommendedGainDb: number;
+  analyzedAt: string;
 }
 
 export interface ArrangementSettings {
@@ -56,6 +67,24 @@ export interface AudioSettings {
   duckingGainDb: number;
   fadeDownMs: number;
   fadeUpMs: number;
+  normalizeClips?: boolean;
+  normalizationTargetLufs?: number;
+  truePeakCeilingDbtp?: number;
+  echoEnabled?: boolean;
+  echoDelayMs?: number;
+  echoFeedback?: number;
+  echoMix?: number;
+  reverbEnabled?: boolean;
+  reverbDuration?: number;
+  reverbDecay?: number;
+  reverbMix?: number;
+}
+
+export interface LoudnessMeterReading {
+  momentary: number;
+  shortTerm: number;
+  integrated: number;
+  peakDbfs: number;
 }
 
 export type AutomationDisplayUnit = 'percent' | 'db';
@@ -114,6 +143,8 @@ export interface EditingPreferences {
   snapGridMs: number;
   allowAssetReuse: boolean;
   verifyFileIntegrity: boolean;
+  analyzeLoudnessOnImport: boolean;
+  showFileLoudness: boolean;
 }
 
 export interface QuarantineItem {

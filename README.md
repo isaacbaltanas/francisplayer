@@ -106,4 +106,12 @@ Los avisos y licencias del binario FFmpeg incluido se documentan en [THIRD_PARTY
 - Cuarentena con preescucha y admisión manual: ningún archivo se pierde ni se ignora silenciosamente.
 - Historial persistente con el resultado individual de cada archivo.
 
+## Versión 0.10
+
+- LUFS, True Peak, RMS y ganancia recomendada para cada archivo.
+- Normalización no destructiva con objetivo y techo True Peak configurables.
+- Vúmetro de mezcla con LUFS momentáneos, cortos e integrados.
+- Motor Web Audio con eco y reverberación escuchables en tiempo real.
+- Render equivalente de normalización y efectos durante la exportación.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

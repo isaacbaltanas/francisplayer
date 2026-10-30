@@ -66,7 +66,13 @@ const resources = {
     quarantineCount_one: '{{count}} archivo protegido', quarantineCount_other: '{{count}} archivos protegidos',
     importHistory: 'HISTORIAL COMPLETO', noImportLogs: 'Todavía no hay importaciones registradas',
     logNeverDeletes: 'Los duplicados y archivos en cuarentena siempre quedan registrados.', analyzingFiles: 'Analizando archivos…',
-    admittedWithWarning: 'Admitido manualmente sin superar la comprobación'
+    admittedWithWarning: 'Admitido manualmente sin superar la comprobación',
+    analyzeLoudnessOnImport: 'Medir LUFS al importar', showFileLoudness: 'Mostrar nivel en cada archivo',
+    normalizeClips: 'Normalizar archivos automáticamente', normalizationTarget: 'Objetivo de sonoridad',
+    truePeakCeiling: 'Límite True Peak', fileLoudnessDetail: 'LUFS integrados · True Peak · corrección recomendada',
+    enableEcho: 'Activar eco', echoDelay: 'Retardo del eco', echoFeedback: 'Feedback del eco', effectMix: 'Mezcla del efecto',
+    enableReverb: 'Activar reverberación', reverbDuration: 'Duración de reverb', reverbDecay: 'Caída de reverb',
+    loudnessMeterHelp: 'M: momentáneo · S: corto · I: integrado · PK: pico'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -132,7 +138,13 @@ const resources = {
     quarantineCount_one: '{{count}} protected file', quarantineCount_other: '{{count}} protected files',
     importHistory: 'COMPLETE HISTORY', noImportLogs: 'No imports have been recorded yet',
     logNeverDeletes: 'Duplicates and quarantined files are always recorded.', analyzingFiles: 'Analyzing files…',
-    admittedWithWarning: 'Manually admitted without passing verification'
+    admittedWithWarning: 'Manually admitted without passing verification',
+    analyzeLoudnessOnImport: 'Measure LUFS on import', showFileLoudness: 'Show level for each file',
+    normalizeClips: 'Normalize files automatically', normalizationTarget: 'Loudness target',
+    truePeakCeiling: 'True Peak ceiling', fileLoudnessDetail: 'Integrated LUFS · True Peak · recommended correction',
+    enableEcho: 'Enable echo', echoDelay: 'Echo delay', echoFeedback: 'Echo feedback', effectMix: 'Effect mix',
+    enableReverb: 'Enable reverb', reverbDuration: 'Reverb duration', reverbDecay: 'Reverb decay',
+    loudnessMeterHelp: 'M: momentary · S: short-term · I: integrated · PK: peak'
   } }
 };
 

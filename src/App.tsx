@@ -13,7 +13,8 @@ import { ImportLogDialog, QuarantineDialog } from './components/ImportCenterDial
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
-import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
+import { normalizationAdjustmentDb } from './lib/audio';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -31,7 +32,18 @@ const defaultAudioSettings: AudioSettings = {
   voiceGainDb: -1,
   duckingGainDb: -40,
   fadeDownMs: 1500,
-  fadeUpMs: 2000
+  fadeUpMs: 2000,
+  normalizeClips: false,
+  normalizationTargetLufs: -23,
+  truePeakCeilingDbtp: -1,
+  echoEnabled: false,
+  echoDelayMs: 260,
+  echoFeedback: 30,
+  echoMix: 15,
+  reverbEnabled: false,
+  reverbDuration: 1.8,
+  reverbDecay: 2.4,
+  reverbMix: 15
 };
 
 const defaultEditingPreferences: EditingPreferences = {
@@ -39,7 +51,9 @@ const defaultEditingPreferences: EditingPreferences = {
   snapMode: 'smart',
   snapGridMs: 1000,
   allowAssetReuse: true,
-  verifyFileIntegrity: true
+  verifyFileIntegrity: true,
+  analyzeLoudnessOnImport: true,
+  showFileLoudness: true
 };
 
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
@@ -82,6 +96,8 @@ interface AssetListProps {
   occurrences: Map<string, number>;
   highlightedAssetIds: Set<string>;
   allowAssetReuse: boolean;
+  showFileLoudness: boolean;
+  audioSettings: AudioSettings;
   onFiles: (files: File[], kind: MediaKind, tabId: string) => void;
   onRemove: (id: string) => void;
   onPreview: (asset: MediaAsset) => void;
@@ -95,7 +111,7 @@ interface AssetListProps {
   onInsertionChange: (patch: Partial<InsertionConfig>) => void;
 }
 
-function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, occurrences, highlightedAssetIds, allowAssetReuse,
+function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, occurrences, highlightedAssetIds, allowAssetReuse, showFileLoudness, audioSettings,
   onFiles, onRemove, onPreview, onToggleHighlight, onSelectTab, onAddTab, onRenameTab, onMoveTab, onRemoveTab,
   onToggleLocalAutomation, onInsertionChange }: AssetListProps) {
   const { t, i18n } = useTranslation();
@@ -167,6 +183,9 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
           <strong title={asset.name}>{asset.name}</strong>
           <span>{asset.durationMs ? formatDuration(asset.durationMs) : '—'} · {formatBytes(asset.sizeBytes, i18n.language)}
             {asset.integrity === 'warning' && <b className="integrity-warning" title={t('admittedWithWarning')}> · !</b>}</span>
+          {showFileLoudness && asset.analysis && (() => { const gain = normalizationAdjustmentDb(asset.analysis, audioSettings); return <span className="file-loudness" title={t('fileLoudnessDetail')}>
+            {asset.analysis.integratedLufs.toFixed(1)} LUFS · {asset.analysis.truePeakDbtp.toFixed(1)} dBTP · {gain >= 0 ? '+' : ''}{gain.toFixed(1)} dB
+          </span>; })()}
         </div>
         <span className={`occurrence-badge ${occurrenceCount > 0 ? 'used' : ''}`} title={t('timelineOccurrences', { count: occurrenceCount })}>{occurrenceCount}</span>
         <button className={`highlight-button ${highlighted ? 'active' : ''}`} onClick={() => onToggleHighlight(asset.id)}
@@ -272,6 +291,30 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
       <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs}
         onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
+      <Toggle label={t('normalizeClips')} checked={audioSettings.normalizeClips ?? false}
+        onChange={(normalizeClips) => onAudioChange({ normalizeClips })} />
+      <DbField label={t('normalizationTarget')} value={audioSettings.normalizationTargetLufs ?? -23} min={-30} max={-5}
+        onChange={(normalizationTargetLufs) => onAudioChange({ normalizationTargetLufs })} />
+      <DbField label={t('truePeakCeiling')} value={audioSettings.truePeakCeilingDbtp ?? -1} min={-9} max={0}
+        onChange={(truePeakCeilingDbtp) => onAudioChange({ truePeakCeilingDbtp })} />
+      <Toggle label={t('enableEcho')} checked={audioSettings.echoEnabled ?? false}
+        onChange={(echoEnabled) => onAudioChange({ echoEnabled })} />
+      <MsField label={t('echoDelay')} value={audioSettings.echoDelayMs ?? 260}
+        onChange={(echoDelayMs) => onAudioChange({ echoDelayMs })} />
+      <PercentField label={t('echoFeedback')} value={audioSettings.echoFeedback ?? 30}
+        onChange={(echoFeedback) => onAudioChange({ echoFeedback })} max={90} />
+      <PercentField label={t('effectMix')} value={audioSettings.echoMix ?? 15}
+        onChange={(echoMix) => onAudioChange({ echoMix })} />
+      <Toggle label={t('enableReverb')} checked={audioSettings.reverbEnabled ?? false}
+        onChange={(reverbEnabled) => onAudioChange({ reverbEnabled })} />
+      <label className="field compact-field"><span>{t('reverbDuration')}</span><div className="number-field">
+        <input type="number" min="0.1" max="10" step="0.1" value={audioSettings.reverbDuration ?? 1.8}
+          onChange={(event) => onAudioChange({ reverbDuration: Math.max(.1, Math.min(10, Number(event.target.value))) })} /><em>s</em>
+      </div></label>
+      <PercentField label={t('reverbDecay')} value={(audioSettings.reverbDecay ?? 2.4) * 10}
+        onChange={(value) => onAudioChange({ reverbDecay: value / 10 })} max={100} />
+      <PercentField label={t('effectMix')} value={audioSettings.reverbMix ?? 15}
+        onChange={(reverbMix) => onAudioChange({ reverbMix })} />
     </div></div>}
 
     {tab === 'automation' && <div className="settings-tab-content automation-settings">
@@ -298,6 +341,10 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         onChange={(allowAssetReuse) => onEditingPreferencesChange({ allowAssetReuse })} />
       <Toggle label={t('verifyFileIntegrity')} checked={editingPreferences.verifyFileIntegrity}
         onChange={(verifyFileIntegrity) => onEditingPreferencesChange({ verifyFileIntegrity })} />
+      <Toggle label={t('analyzeLoudnessOnImport')} checked={editingPreferences.analyzeLoudnessOnImport}
+        onChange={(analyzeLoudnessOnImport) => onEditingPreferencesChange({ analyzeLoudnessOnImport })} />
+      <Toggle label={t('showFileLoudness')} checked={editingPreferences.showFileLoudness}
+        onChange={(showFileLoudness) => onEditingPreferencesChange({ showFileLoudness })} />
       <p className="settings-help">{t('integrityHelp')}</p>
       <p className="settings-help">{t('snapControlHint')}</p>
     </div>}
@@ -321,6 +368,13 @@ function MsField({ label, value, onChange }: { label: string; value: number; onC
   return <label className="field compact-field"><span>{label}</span><div className="number-field">
     <input type="number" min="0" max="30000" step="50" value={value}
       onChange={(event) => onChange(Math.min(30_000, Math.max(0, Number(event.target.value))))} /><em>ms</em>
+  </div></label>;
+}
+
+function PercentField({ label, value, onChange, max = 100 }: { label: string; value: number; onChange: (value: number) => void; max?: number }) {
+  return <label className="field compact-field"><span>{label}</span><div className="number-field">
+    <input type="number" min="0" max={max} step="1" value={Math.round(value)}
+      onChange={(event) => onChange(Math.min(max, Math.max(0, Number(event.target.value))))} /><em>%</em>
   </div></label>;
 }
 
@@ -436,6 +490,7 @@ interface TimelineProps {
   isPlaying: boolean;
   positionMs: number;
   musicGainDb: number;
+  meter: LoudnessMeterReading;
   automation: AutomationState | null;
   editingPreferences: EditingPreferences;
   highlightedAssetIds: Set<string>;
@@ -452,7 +507,7 @@ interface TimelineProps {
   onSeek: (positionMs: number) => void;
 }
 
-function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, automation, editingPreferences, highlightedAssetIds,
+function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences, highlightedAssetIds,
   onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onStop, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
@@ -497,6 +552,11 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
         <time>{formatDuration(arrangement.durationMs)}</time>
         <div className="gain-meter"><span>{t('musicGain')}</span><strong>{musicGainDb.toFixed(1)} dB</strong>
           <i style={{ width: `${Math.max(0, Math.min(100, (musicGainDb + 80) / 80 * 100))}%` }} /></div>
+        <div className="loudness-meter" title={t('loudnessMeterHelp')}>
+          <span>M <b>{meter.momentary.toFixed(1)}</b></span><span>S <b>{meter.shortTerm.toFixed(1)}</b></span>
+          <span>I <b>{meter.integrated.toFixed(1)}</b></span><span>PK <b>{meter.peakDbfs.toFixed(1)}</b></span>
+          <i style={{ width: `${Math.max(0, Math.min(100, (meter.momentary + 60) / 51 * 100))}%` }} />
+        </div>
       </div>
       <div className="timeline-shell">
         <div className="track-labels">
@@ -601,6 +661,9 @@ export default function App() {
         setImportProgress({ completed: 0, total: inputPaths.length });
         const result = await window.francisDesktop.importPaths({ inputPaths, kind, tabId,
           verifyIntegrity: editingPreferences.verifyFileIntegrity,
+          analyzeLoudness: editingPreferences.analyzeLoudnessOnImport,
+          normalizationTargetLufs: audioSettings.normalizationTargetLufs ?? -23,
+          truePeakCeilingDbtp: audioSettings.truePeakCeilingDbtp ?? -1,
           knownFingerprints: [...allAssets.map(asset => asset.fingerprint), ...quarantine.map(item => item.fingerprint)].filter(Boolean),
           knownFiles: [...allAssets, ...quarantine].map(item => ({ path: item.path, sizeBytes: item.sizeBytes })) });
         let destinationTabId = tabId;
@@ -779,7 +842,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.9.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.10.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -808,7 +871,7 @@ export default function App() {
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
       setMusic(project.assets.filter(asset => asset.kind === 'music'));
       setVoices(project.assets.filter(asset => asset.kind === 'voice'));
-      setSettings(project.settings); setAudioSettings(project.audioSettings); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
+      setSettings(project.settings); setAudioSettings({ ...defaultAudioSettings, ...project.audioSettings }); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
       setLibraryTabs(project.libraryTabs); setActiveMusicTabId(project.activeMusicTabId); setActiveVoiceTabId(project.activeVoiceTabId);
       setMusicInsertion(project.musicInsertion); setVoiceInsertion(project.voiceInsertion);
       setArrangement(project.arrangement); setAutomation(project.automation);
@@ -885,7 +948,7 @@ export default function App() {
         <div className="library-area">
           <AssetList kind="music" assets={music} tabs={libraryTabs.filter(tab => tab.kind === 'music')}
             activeTabId={activeMusicTabId} insertion={musicInsertion} activePreview={activePreview} occurrences={occurrences}
-            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} onFiles={addFiles}
+            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
             onRemove={removeAsset} onPreview={preview} onToggleHighlight={(id) => setHighlightedAssetIds(current => {
               const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
             })} onSelectTab={setActiveMusicTabId} onAddTab={addLibraryTab}
@@ -900,7 +963,7 @@ export default function App() {
             onInsertionChange={(patch) => setMusicInsertion(current => ({ ...current, ...patch }))} />
           <AssetList kind="voice" assets={voices} tabs={libraryTabs.filter(tab => tab.kind === 'voice')}
             activeTabId={activeVoiceTabId} insertion={voiceInsertion} activePreview={activePreview} occurrences={occurrences}
-            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} onFiles={addFiles}
+            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
             onRemove={removeAsset} onPreview={preview} onToggleHighlight={(id) => setHighlightedAssetIds(current => {
               const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
             })} onSelectTab={setActiveVoiceTabId} onAddTab={addLibraryTab}
@@ -926,7 +989,7 @@ export default function App() {
           onMount={mount} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying} positionMs={player.positionMs}
-        musicGainDb={player.musicGainDb} automation={automation} editingPreferences={editingPreferences}
+        musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
         highlightedAssetIds={highlightedAssetIds} onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
         onMoveClip={moveClip} onRemoveClip={removeClip} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}

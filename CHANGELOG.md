@@ -2,6 +2,28 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.10.0] - 2026-10-31
+
+### Añadido
+
+- Análisis EBU R128 individual durante la importación mediante FFmpeg.
+- Metadata por archivo con LUFS integrados, Loudness Range, True Peak, pico de muestra, RMS y corrección recomendada.
+- Visualización desconectable de LUFS, dBTP y ganancia junto a cada archivo.
+- Normalización no destructiva con objetivo configurable y limitación automática por True Peak.
+- Objetivo inicial de −23 LUFS y techo de −1 dBTP, ambos editables.
+- Nuevo grafo de reproducción Web Audio a 48 kHz para toda la mezcla.
+- Vúmetro en tiempo real con LUFS momentáneos, Short-Term e integrados, además de pico.
+- Procesador AudioWorklet separado de la interfaz con ponderación K y gating EBU.
+- Eco en tiempo real con retardo, feedback y mezcla wet/dry.
+- Reverberación por convolución en tiempo real con duración, caída y mezcla configurables.
+- Aplicación de normalización, eco y reverberación en las exportaciones FFmpeg.
+- Pruebas de análisis R128, límites True Peak, normalización y cadena de efectos.
+
+### Cambiado
+
+- La reproducción deja de depender del volumen directo de múltiples elementos y se enruta por nodos de ganancia, efectos y medición.
+- Los proyectos antiguos reciben valores compatibles al abrirse aunque no tengan todavía análisis de sonoridad.
+
 ## [0.9.0] - 2026-10-31
 
 ### Añadido

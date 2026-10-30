@@ -1,6 +1,13 @@
-import type { AudioSettings, TimelineClip } from '../types';
+import type { AudioAnalysis, AudioSettings, TimelineClip } from '../types';
 
 export const dbToGain = (db: number) => Math.min(1, Math.max(0, 10 ** (db / 20)));
+export const dbToLinear = (db: number) => Math.max(0, 10 ** (db / 20));
+
+export const normalizationAdjustmentDb = (analysis: AudioAnalysis, settings: AudioSettings) => {
+  const desired = (settings.normalizationTargetLufs ?? -23) - analysis.integratedLufs;
+  const peakLimited = (settings.truePeakCeilingDbtp ?? -1) - analysis.truePeakDbtp;
+  return Math.max(-30, Math.min(30, desired, peakLimited));
+};
 
 export const calculateDuckingDb = (
   positionMs: number,

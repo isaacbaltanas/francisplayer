@@ -66,7 +66,13 @@ export const buildExportPlan = (payload: any) => {
     inputs.push('-i', asset.path);
     const tab = payload.libraryTabs.find((item: any) => item.id === clip.libraryTabId);
     const local = tab?.localAutomationEnabled ? automationExpression(tab.automationPoints, payload.arrangement.durationMs, clip.startMs) : '1';
-    const base = clip.kind === 'music' ? musicExpression(clip, payload) : number(dbToGain(payload.audioSettings.voiceGainDb)).toString();
+    const adjustment = asset.analysis ? Math.min(
+      (payload.audioSettings.normalizationTargetLufs ?? -23) - asset.analysis.integratedLufs,
+      (payload.audioSettings.truePeakCeilingDbtp ?? -1) - asset.analysis.truePeakDbtp
+    ) : 0;
+    const normalization = payload.audioSettings.normalizeClips && asset.analysis ? 10 ** (adjustment / 20) : 1;
+    const sourceBase = clip.kind === 'music' ? musicExpression(clip, payload) : number(dbToGain(payload.audioSettings.voiceGainDb)).toString();
+    const base = `(${sourceBase})*${number(normalization)}`;
     const chain = [`[${labels.length}:a]atrim=0:${number(clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${number(Math.min(clip.fadeInMs, clip.durationMs) / 1000)}`);
     if (clip.fadeOutMs) chain.push(`afade=t=out:st=${number(Math.max(0, clip.durationMs - clip.fadeOutMs) / 1000)}:d=${number(Math.min(clip.fadeOutMs, clip.durationMs) / 1000)}`);
@@ -76,7 +82,10 @@ export const buildExportPlan = (payload: any) => {
     labels.push(label);
   });
   if (labels.length === 0) throw new Error('The arrangement has no playable clips');
-  const finishing = payload.exportOptions?.normalize ? ',loudnorm=I=-14:LRA=11:TP=-1.5' : '';
+  let finishing = '';
+  if (payload.audioSettings.echoEnabled) finishing += `,aecho=0.8:${number((payload.audioSettings.echoMix ?? 15) / 100)}:${Math.round(payload.audioSettings.echoDelayMs ?? 260)}:${number((payload.audioSettings.echoFeedback ?? 30) / 100)}`;
+  if (payload.audioSettings.reverbEnabled) finishing += `,aecho=0.85:${number((payload.audioSettings.reverbMix ?? 15) / 100)}:45|90|180:0.45|0.3|0.18`;
+  if (payload.exportOptions?.normalize) finishing += ',loudnorm=I=-14:LRA=11:TP=-1.5';
   filters.push(`${labels.map(label => `[${label}]`).join('')}amix=inputs=${labels.length}:normalize=0:dropout_transition=0,atrim=0:${number(payload.arrangement.durationMs / 1000)}${finishing}[out]`);
   return { inputs, filterScript: filters.join(';\n') };
 };

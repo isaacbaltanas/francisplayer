@@ -45,9 +45,30 @@ const fingerprint = (filePath: string) => new Promise<string>((resolve, reject) 
   stream.on('end', () => resolve(hash.digest('hex')));
 });
 
-const inspectAudio = (binary: string, filePath: string, verifyIntegrity: boolean) => new Promise<{ durationMs: number; valid: boolean; detail: string }>((resolve) => {
+export const parseLoudnessReport = (output: string, targetLufs = -23, truePeakCeiling = -1) => {
+  const summary = output.slice(output.lastIndexOf('Summary:'));
+  const integrated = /I:\s*(-?[\d.]+)\s+LUFS/.exec(summary);
+  const range = /LRA:\s*(-?[\d.]+)\s+LU/.exec(summary);
+  const truePeak = /True peak:[\s\S]*?Peak:\s*(-?[\d.]+)\s+dB/.exec(summary);
+  const peaks = [...output.matchAll(/Peak level dB:\s*(-?[\d.]+)/g)];
+  const rmsValues = [...output.matchAll(/RMS level dB:\s*(-?[\d.]+)/g)];
+  if (!integrated || !truePeak) return undefined;
+  const integratedLufs = Number(integrated[1]);
+  const truePeakDbtp = Number(truePeak[1]);
+  const desired = targetLufs - integratedLufs;
+  const recommendedGainDb = Math.max(-30, Math.min(30, desired, truePeakCeiling - truePeakDbtp));
+  return {
+    integratedLufs, loudnessRangeLu: Number(range?.[1] ?? 0), truePeakDbtp,
+    samplePeakDb: Number(peaks[peaks.length - 1]?.[1] ?? truePeakDbtp), rmsDb: Number(rmsValues[rmsValues.length - 1]?.[1] ?? integratedLufs),
+    recommendedGainDb, analyzedAt: new Date().toISOString()
+  };
+};
+
+const inspectAudio = (binary: string, filePath: string, verifyIntegrity: boolean, analyzeLoudness: boolean,
+  targetLufs: number, truePeakCeiling: number) => new Promise<{ durationMs: number; valid: boolean; detail: string; analysis?: any }>((resolve) => {
   const args = ['-hide_banner', '-i', filePath, '-map', '0:a:0'];
-  if (!verifyIntegrity) args.push('-t', '0.05');
+  if (analyzeLoudness) args.push('-af', 'ebur128=peak=true,astats=metadata=0:reset=0');
+  if (!verifyIntegrity && !analyzeLoudness) args.push('-t', '0.05');
   args.push('-f', 'null', '-');
   const process = spawn(binary, args, { windowsHide: true });
   let output = '';
@@ -57,7 +78,8 @@ const inspectAudio = (binary: string, filePath: string, verifyIntegrity: boolean
     const match = /Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)/.exec(output);
     const durationMs = match ? Math.round((+match[1] * 3600 + +match[2] * 60 + +match[3]) * 1000) : 0;
     const errorLine = output.split(/\r?\n/).find(line => /invalid|error|corrupt|could not|failed/i.test(line))?.trim() ?? '';
-    resolve({ durationMs, valid: code === 0 && durationMs > 0, detail: errorLine || (code === 0 ? 'OK' : `FFmpeg exit ${code}`) });
+    resolve({ durationMs, valid: code === 0 && durationMs > 0, detail: errorLine || (code === 0 ? 'OK' : `FFmpeg exit ${code}`),
+      analysis: analyzeLoudness ? parseLoudnessReport(output, targetLufs, truePeakCeiling) : undefined });
   });
 });
 
@@ -71,7 +93,8 @@ const parallelMap = async <T, R>(items: T[], concurrency: number, work: (item: T
   return results;
 };
 
-export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity, knownFingerprints, knownFiles, ffmpegPath, onProgress }: any) => {
+export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity, analyzeLoudness, normalizationTargetLufs = -23,
+  truePeakCeilingDbtp = -1, knownFingerprints, knownFiles, ffmpegPath, onProgress }: any) => {
   const startedAt = new Date().toISOString();
   const folderImport = inputPaths.some((target: string) => { try { return fs.statSync(target).isDirectory(); } catch { return false; } });
   const files = enumerateFiles(inputPaths);
@@ -95,7 +118,7 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
       return finish({ outcome: 'quarantined', item: quarantine(kind, filePath, stat.size, hash, 'unsupported', 'Unsupported file extension'),
         log: { path: filePath, name, outcome: 'quarantined', detail: 'Unsupported file extension' } });
     }
-    const inspected = await inspectAudio(ffmpegPath, filePath, verifyIntegrity);
+    const inspected = await inspectAudio(ffmpegPath, filePath, verifyIntegrity, analyzeLoudness, normalizationTargetLufs, truePeakCeilingDbtp);
     if (!inspected.valid) {
       const reason = inspected.durationMs <= 0 ? 'invalidDuration' : 'corrupt';
       return finish({ outcome: 'quarantined', item: { ...quarantine(kind, filePath, stat.size, hash, reason, inspected.detail), durationMs: inspected.durationMs },
@@ -104,7 +127,7 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
     return finish({ outcome: 'imported', asset: {
       id: `${kind}-${Date.now()}-${index}-${crypto.randomUUID()}`, kind, name: path.basename(filePath, path.extname(filePath)),
       durationMs: inspected.durationMs, sizeBytes: stat.size, path: filePath, previewUrl: pathToFileURL(filePath).href,
-      color: '#4f8cff', libraryTabId: tabId, waveform: [], fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked'
+      color: '#4f8cff', libraryTabId: tabId, waveform: [], fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked', analysis: inspected.analysis
     }, log: { path: filePath, name, outcome: 'imported', detail: verifyIntegrity ? 'Fully decoded and verified' : 'Metadata verified' } });
   });
   const assets = results.filter(item => item.outcome === 'imported').map(item => item.asset);
