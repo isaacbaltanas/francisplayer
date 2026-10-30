@@ -1,0 +1,45 @@
+# Francis Player
+
+Aplicación de escritorio para montar automáticamente programas de música y locuciones.
+
+## Desarrollo
+
+Requiere Node.js. Instala las dependencias y abre la aplicación:
+
+```bash
+npm install
+npm run dev
+```
+
+Pruebas y compilación:
+
+```bash
+npm test
+npm run build
+npm run package:mac
+```
+
+La versión moderna está orientada a macOS y Windows 10/11. Una futura compilación heredada con Electron 22 podrá cubrir Windows 8.1, sin garantías de seguridad del navegador integrado.
+
+## Versionado
+
+Francis Player sigue [Semantic Versioning](https://semver.org/):
+
+- `PATCH` para correcciones compatibles, por ejemplo `0.1.0` → `0.1.1`.
+- `MINOR` para nuevas funciones compatibles, por ejemplo `0.1.0` → `0.2.0`.
+- `MAJOR` para cambios incompatibles una vez alcanzada la versión estable `1.0.0`.
+
+Toda mejora debe actualizar la versión de `package.json` y añadir una entrada a `CHANGELOG.md`.
+
+## Versión 0.1
+
+- Importación local de canciones y locuciones.
+- Lectura de duración y preescucha individual.
+- Orden secuencial o aleatorio determinista.
+- Repetición opcional de música.
+- Duración objetivo.
+- Locuciones por intervalo o distribución uniforme.
+- Prevención opcional de solapamientos.
+- Línea de tiempo visual de dos pistas.
+- Regiones explícitas de música ausente.
+- Interfaz en español e inglés.

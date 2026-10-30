@@ -1,0 +1,36 @@
+{
+  "name": "francis-player",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Automatic music and voice arrangement studio",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "concurrently -k \"vite\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 node scripts/run-electron.cjs\"",
+    "build": "tsc -p tsconfig.node.json && tsc --noEmit && vite build",
+    "start": "npm run build && node scripts/run-electron.cjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package:mac": "npm run build && electron-forge package --platform=darwin",
+    "package:windows": "npm run build && electron-forge package --platform=win32 --arch=x64"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "i18next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-i18next": "latest"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "latest",
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "concurrently": "latest",
+    "cross-env": "latest",
+    "electron": "^45.1.0",
+    "typescript": "latest",
+    "vite": "latest",
+    "vitest": "latest",
+    "wait-on": "latest"
+  }
+}
