@@ -16,5 +16,12 @@ contextBridge.exposeInMainWorld('francisDesktop', {
     openCallbacks.add(callback);
     if (pendingProjectPath) { const next = pendingProjectPath; pendingProjectPath = null; queueMicrotask(() => callback(next)); }
     return () => { openCallbacks.delete(callback); };
+  },
+  exportAudio: (payload: unknown, options: unknown) => ipcRenderer.invoke('audio:export', payload, options),
+  cancelExport: () => ipcRenderer.invoke('audio:cancel-export'),
+  onExportProgress: (callback: (progress: number) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: number) => callback(progress);
+    ipcRenderer.on('audio:export-progress', listener);
+    return () => ipcRenderer.removeListener('audio:export-progress', listener);
   }
 });

@@ -8,10 +8,11 @@ import { filesToAssets } from './lib/media';
 import { useTimelinePlayer } from './hooks/useTimelinePlayer';
 import { AutomationEditor } from './components/AutomationEditor';
 import { TrackAutomationLane } from './components/TrackAutomationLane';
+import { ExportDialog } from './components/ExportDialog';
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
-import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, InsertionConfig, LibraryTab, MediaAsset, MediaKind, TimelineClip } from './types';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, InsertionConfig, LibraryTab, MediaAsset, MediaKind, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -546,6 +547,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState<string | undefined>();
   const [projectName, setProjectName] = useState('Proyecto sin título');
+  const [exportOpen, setExportOpen] = useState(false);
   const audio = useRef<HTMLAudioElement | null>(null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const assetsRef = useRef<MediaAsset[]>([]);
@@ -729,7 +731,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.7.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.8.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets
   });
 
@@ -775,6 +777,11 @@ export default function App() {
     setHighlightedAssetIds(new Set()); setProjectPath(undefined); setProjectName(t('untitledProject'));
   };
 
+  const exportAudio = async (exportSettings: ExportSettings) => {
+    if (!window.francisDesktop || !arrangement) return null;
+    return window.francisDesktop.exportAudio(projectDocument(), exportSettings);
+  };
+
   useEffect(() => {
     const removeListener = window.francisDesktop?.onOpenProject(path => { void openProject(path); });
     const keyboard = (event: KeyboardEvent) => {
@@ -795,6 +802,7 @@ export default function App() {
         <button onClick={() => void openProject()} title={`${t('openProject')} · Ctrl/⌘O`}>⌂</button>
         <button onClick={() => void saveProject(false)} title={`${t('saveProject')} · Ctrl/⌘S`}>▣</button>
         <button onClick={() => void saveProject(true)} title={t('saveProjectAs')}>▣＋</button>
+        <button className="export-nav" onClick={() => setExportOpen(true)} disabled={!arrangement} title={t('exportMix')}>{t('export')}</button>
       </nav>
       <div className="language-switch" aria-label={t('language')}>
         <button className={i18n.language === 'es' ? 'active' : ''} onClick={() => void i18n.changeLanguage('es')}>{t('spanish')}</button>
@@ -856,5 +864,6 @@ export default function App() {
         onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
         onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>
+    <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />
   </div>;
 }

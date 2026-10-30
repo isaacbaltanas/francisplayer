@@ -40,6 +40,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .project-actions { display: flex; gap: 3px; padding: 3px; border: 1px solid #2d3337; border-radius: 6px; background: #181c1f; -webkit-app-region: no-drag; }
 .project-actions button { min-width: 28px; height: 27px; border: 0; border-radius: 4px; background: transparent; color: #8b949a; font-size: 10px; cursor: pointer; }
 .project-actions button:hover { background: #343a3e; color: #ffc171; }
+.project-actions button:disabled { opacity: .28; cursor: not-allowed; }
+.project-actions .export-nav { width: auto; padding: 0 9px; color: #edac5f; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
 .language-switch { justify-self: end; display: flex; padding: 3px; background: #1c1f22; border: 1px solid var(--line); border-radius: 7px; }
 .language-switch button { border: 0; background: transparent; color: #767d84; padding: 6px 9px; border-radius: 5px; font-size: 10px; font-weight: 700; cursor: pointer; }
 .language-switch button.active { color: #18130d; background: var(--accent); }
@@ -236,6 +238,30 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .automation-menu button:hover, .automation-menu button.active { background: #343c3e; color: #fff; }
 .automation-menu button i { display: inline-block; width: 7px; height: 7px; margin: 0 7px 0 2px; border-radius: 50%; }
 .automation-menu .menu-close { margin-top: 4px; border-top: 1px solid #3a4245; color: #737c7a; }
+
+.modal-backdrop { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; background: rgba(4,6,8,.72); backdrop-filter: blur(8px); }
+.export-dialog { width: min(570px, calc(100vw - 40px)); overflow: hidden; border: 1px solid #454d52; border-radius: 12px; background: linear-gradient(145deg, #24292d, #171a1d); box-shadow: 0 30px 80px #000c; }
+.export-dialog > header { min-height: 73px; display: flex; align-items: center; justify-content: space-between; padding: 14px 19px; border-bottom: 1px solid #353b40; }
+.export-dialog > header span { color: #e8a653; font-size: 8px; font-weight: 800; letter-spacing: .16em; }
+.export-dialog > header h2 { margin: 4px 0 0; font-size: 20px; }
+.export-dialog > header button { width: 30px; height: 30px; border: 0; border-radius: 50%; background: #30363a; color: #9ba2a7; cursor: pointer; }
+.export-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; padding: 20px; }
+.export-grid label { display: grid; gap: 7px; color: #939ca2; font-size: 8px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.export-grid select { height: 37px; padding: 0 10px; border: 1px solid #424a50; border-radius: 6px; background: #161a1d; color: #e1e5e6; }
+.export-grid input[type='range'] { accent-color: var(--accent); }.export-grid output { color: #d8dcdc; font: 9px ui-monospace, monospace; }
+.export-grid .export-check { grid-column: 1 / -1; display: flex; flex-direction: row; align-items: center; gap: 9px; padding: 10px; border: 1px solid #383f44; border-radius: 6px; text-transform: none; letter-spacing: 0; }
+.export-check input { accent-color: var(--accent); }
+.export-summary { margin: 0 20px; padding: 11px; border-radius: 6px; background: #14181a; color: #8d969b; font: 9px ui-monospace, monospace; text-align: center; }
+.export-progress { position: relative; height: 28px; margin: 14px 20px 0; overflow: hidden; border: 1px solid #3d4549; border-radius: 5px; background: #141719; }
+.export-progress i { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #bb7435, #f1b35f); transition: width .2s; }
+.export-progress span { position: relative; z-index: 1; display: grid; place-items: center; height: 100%; color: #fff; font: 9px ui-monospace, monospace; text-shadow: 0 1px 2px #000; }
+.export-result, .export-error { margin: 13px 20px 0; color: #8ef4cf; font-size: 10px; }.export-error { color: #ff9ba3; }
+.export-result small { display: block; margin-top: 4px; color: #737c81; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.export-dialog > footer { display: flex; justify-content: flex-end; gap: 8px; padding: 18px 20px 20px; }
+.export-dialog > footer button { min-width: 120px; height: 38px; border-radius: 6px; cursor: pointer; font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.export-dialog .secondary { border: 1px solid #41494e; background: #22272a; color: #a4acb1; }
+.export-primary { border: 0; background: linear-gradient(110deg, #e49a45, #f2b768); color: #23170b; }
+.export-primary:disabled { opacity: .35; cursor: not-allowed; }
 
 @media (max-width: 980px) {
   .workspace-grid { grid-template-columns: 1fr; }

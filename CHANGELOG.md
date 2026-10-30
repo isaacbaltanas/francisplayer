@@ -2,6 +2,27 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.8.0] - 2026-10-31
+
+### Añadido
+
+- Exportación completamente local mediante un binario FFmpeg incluido en la aplicación.
+- Formatos WAV, MP3, AAC/M4A, FLAC, OGG Vorbis y Opus.
+- Selección mono/estéreo y frecuencias de 44,1, 48 y 96 kHz.
+- Profundidades de 16, 24 y 32 bits para formatos sin pérdida.
+- Bitrates de 96 a 320 kbps para formatos con pérdida.
+- Nivel de compresión específico para FLAC.
+- Normalización opcional a −14 LUFS.
+- Ventana de exportación con resumen, progreso, cancelación, resultado y errores.
+- Render de todas las pistas, posiciones, superposiciones, fades, automatización local y ducking agrupado.
+- Script de filtros independiente para soportar proyectos grandes sin superar el límite de comandos de Windows.
+- Pruebas del plan de mezcla, códecs y lectura de progreso, además de una exportación WAV real de extremo a extremo.
+
+### Seguridad y portabilidad
+
+- FFmpeg se ejecuta sin shell y recibe rutas como argumentos independientes.
+- El binario se desempaqueta correctamente desde ASAR y se selecciona de forma nativa en macOS o Windows.
+
 ## [0.7.0] - 2026-10-30
 
 ### Añadido

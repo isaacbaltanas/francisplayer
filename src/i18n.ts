@@ -50,7 +50,12 @@ const resources = {
     warningVoiceOverlap_other: '{{count}} locuciones están solapadas. Pueden dificultar la comprensión del mensaje.',
     untitledProject: 'Proyecto sin título', statusSaved: 'GUARDADO', newProjectAction: 'Nuevo proyecto', openProject: 'Abrir proyecto',
     saveProject: 'Guardar proyecto', saveProjectAs: 'Guardar proyecto como…',
-    projectSaveError: 'No se pudo guardar el proyecto .francis.', projectOpenError: 'No se pudo abrir este proyecto .francis.'
+    projectSaveError: 'No se pudo guardar el proyecto .francis.', projectOpenError: 'No se pudo abrir este proyecto .francis.',
+    export: 'EXPORTAR', exportAudio: 'EXPORTACIÓN DE AUDIO', exportMix: 'Exportar mezcla', exportFormat: 'Formato', channels: 'Canales',
+    stereo: 'Estéreo', mono: 'Mono', sampleRate: 'Frecuencia de muestreo', bitDepth: 'Profundidad', bitrate: 'Bitrate',
+    compression: 'Compresión FLAC', normalizeLoudness: 'Normalizar sonoridad a −14 LUFS', startExport: 'EXPORTAR ARCHIVO',
+    exporting: 'EXPORTANDO…', cancelExport: 'Cancelar exportación', exportComplete: 'Exportación completada',
+    exportFailed: 'No se pudo completar la exportación.'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -100,7 +105,12 @@ const resources = {
     warningVoiceOverlap_other: '{{count}} voice clips overlap. This may make the message difficult to understand.',
     untitledProject: 'Untitled project', statusSaved: 'SAVED', newProjectAction: 'New project', openProject: 'Open project',
     saveProject: 'Save project', saveProjectAs: 'Save project as…',
-    projectSaveError: 'The .francis project could not be saved.', projectOpenError: 'This .francis project could not be opened.'
+    projectSaveError: 'The .francis project could not be saved.', projectOpenError: 'This .francis project could not be opened.',
+    export: 'EXPORT', exportAudio: 'AUDIO EXPORT', exportMix: 'Export mix', exportFormat: 'Format', channels: 'Channels',
+    stereo: 'Stereo', mono: 'Mono', sampleRate: 'Sample rate', bitDepth: 'Bit depth', bitrate: 'Bitrate',
+    compression: 'FLAC compression', normalizeLoudness: 'Normalize loudness to −14 LUFS', startExport: 'EXPORT FILE',
+    exporting: 'EXPORTING…', cancelExport: 'Cancel export', exportComplete: 'Export complete',
+    exportFailed: 'The export could not be completed.'
   } }
 };
 

@@ -112,3 +112,13 @@ export interface EditingPreferences {
   snapGridMs: number;
   allowAssetReuse: boolean;
 }
+
+export interface ExportSettings {
+  format: 'wav' | 'mp3' | 'aac' | 'flac' | 'ogg' | 'opus';
+  channels: 1 | 2;
+  sampleRate: 44100 | 48000 | 96000;
+  bitDepth: 16 | 24 | 32;
+  bitrate: 96 | 128 | 192 | 256 | 320;
+  compressionLevel: number;
+  normalize: boolean;
+}

@@ -1,6 +1,6 @@
 module.exports = {
   packagerConfig: {
-    asar: true,
+    asar: { unpack: '**/node_modules/ffmpeg-static/**' },
     name: 'Francis Player',
     executableName: 'francis-player',
     extendInfo: {

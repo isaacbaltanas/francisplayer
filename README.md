@@ -89,4 +89,13 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - Configuración, montaje y automatizaciones en JSON legible dentro de `Configuration/`.
 - Recuperación completa en otro equipo sin referencias a los archivos originales.
 
+## Versión 0.8
+
+- Exportación local integrada con FFmpeg, sin nube ni servicios de pago.
+- WAV, MP3, AAC/M4A, FLAC, OGG y Opus.
+- Mono/estéreo, frecuencia, profundidad, bitrate, compresión FLAC y normalización LUFS.
+- Render completo de mezcla, ducking, fades, automatizaciones y solapamientos.
+
+Los avisos y licencias del binario FFmpeg incluido se documentan en [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.
