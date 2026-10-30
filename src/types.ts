@@ -24,6 +24,14 @@ export interface ArrangementSettings {
   seed: number;
 }
 
+export interface AudioSettings {
+  musicGainDb: number;
+  voiceGainDb: number;
+  duckingGainDb: number;
+  fadeDownMs: number;
+  fadeUpMs: number;
+}
+
 export interface TimelineClip {
   id: string;
   assetId?: string;

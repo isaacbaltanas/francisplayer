@@ -2,6 +2,20 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.2.0] - 2026-10-30
+
+### Añadido
+
+- Reproducción completa del montaje desde la línea de tiempo.
+- Controles de reproducción, pausa, parada y búsqueda temporal.
+- Cabezal de reproducción sincronizado y contador con milisegundos.
+- Niveles independientes para música y locuciones.
+- Ducking configurable en dB durante las locuciones.
+- Tiempos independientes de bajada y recuperación de la música.
+- Indicador en tiempo real de la ganancia musical.
+- Reproducción simultánea de locuciones cuando se permiten solapamientos.
+- Pruebas automáticas para la automatización de ganancia y conversión de decibelios.
+
 ## [0.1.0] - 2026-10-30
 
 ### Añadido

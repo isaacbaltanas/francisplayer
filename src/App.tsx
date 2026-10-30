@@ -4,7 +4,8 @@ import type { ChangeEvent } from 'react';
 import { createArrangement } from './lib/arrangement';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
-import type { Arrangement, ArrangementSettings, MediaAsset, MediaKind, TimelineClip } from './types';
+import { useTimelinePlayer } from './hooks/useTimelinePlayer';
+import type { Arrangement, ArrangementSettings, AudioSettings, MediaAsset, MediaKind, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -15,6 +16,14 @@ const defaultSettings: ArrangementSettings = {
   voiceIntervalMs: 30_000,
   allowVoiceOverlap: false,
   seed: 2026
+};
+
+const defaultAudioSettings: AudioSettings = {
+  musicGainDb: -3,
+  voiceGainDb: -1,
+  duckingGainDb: -40,
+  fadeDownMs: 1500,
+  fadeUpMs: 2000
 };
 
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
@@ -84,13 +93,15 @@ function AssetList({ kind, assets, activePreview, onFiles, onRemove, onPreview }
 
 interface SettingsPanelProps {
   settings: ArrangementSettings;
+  audioSettings: AudioSettings;
   mounted: boolean;
   canMount: boolean;
   onChange: (patch: Partial<ArrangementSettings>) => void;
+  onAudioChange: (patch: Partial<AudioSettings>) => void;
   onMount: () => void;
 }
 
-function SettingsPanel({ settings, mounted, canMount, onChange, onMount }: SettingsPanelProps) {
+function SettingsPanel({ settings, audioSettings, mounted, canMount, onChange, onAudioChange, onMount }: SettingsPanelProps) {
   const { t } = useTranslation();
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
 
@@ -137,10 +148,40 @@ function SettingsPanel({ settings, mounted, canMount, onChange, onMount }: Setti
       </label>
     </div>
 
+    <div className="audio-settings-heading"><p className="eyebrow">AUDIO</p><h3>{t('audioMix')}</h3></div>
+    <div className="audio-settings-grid">
+      <DbField label={t('musicLevel')} value={audioSettings.musicGainDb}
+        onChange={(musicGainDb) => onAudioChange({ musicGainDb })} />
+      <DbField label={t('voiceLevel')} value={audioSettings.voiceGainDb}
+        onChange={(voiceGainDb) => onAudioChange({ voiceGainDb })} />
+      <DbField label={t('duckingLevel')} value={audioSettings.duckingGainDb} min={-80} max={0}
+        onChange={(duckingGainDb) => onAudioChange({ duckingGainDb })} />
+      <MsField label={t('fadeDown')} value={audioSettings.fadeDownMs}
+        onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
+      <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs}
+        onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
+    </div>
+
     <button className="mount-button" disabled={!canMount} onClick={onMount}>
       <span className="mount-symbol">✦</span>{t(mounted ? 'remount' : 'mount')}<span className="arrow">→</span>
     </button>
   </aside>;
+}
+
+function DbField({ label, value, onChange, min = -60, max = 6 }: {
+  label: string; value: number; onChange: (value: number) => void; min?: number; max?: number;
+}) {
+  return <label className="field compact-field"><span>{label}</span><div className="number-field">
+    <input type="number" min={min} max={max} step="0.5" value={value}
+      onChange={(event) => onChange(Math.min(max, Math.max(min, Number(event.target.value))))} /><em>dB</em>
+  </div></label>;
+}
+
+function MsField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
+  return <label className="field compact-field"><span>{label}</span><div className="number-field">
+    <input type="number" min="0" max="30000" step="50" value={value}
+      onChange={(event) => onChange(Math.min(30_000, Math.max(0, Number(event.target.value))))} /><em>ms</em>
+  </div></label>;
 }
 
 function Segmented({ label, value, options, onChange, full = false }: {
@@ -170,7 +211,18 @@ function TimelineClipView({ clip, totalMs, t }: { clip: TimelineClip; totalMs: n
   </div>;
 }
 
-function Timeline({ arrangement }: { arrangement: Arrangement | null }) {
+interface TimelineProps {
+  arrangement: Arrangement | null;
+  isPlaying: boolean;
+  positionMs: number;
+  musicGainDb: number;
+  onPlay: () => void;
+  onPause: () => void;
+  onStop: () => void;
+  onSeek: (positionMs: number) => void;
+}
+
+function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, onPlay, onPause, onStop, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const width = arrangement ? Math.max(100, arrangement.durationMs / 60_000 * 70 * zoom) : 100;
@@ -189,6 +241,17 @@ function Timeline({ arrangement }: { arrangement: Arrangement | null }) {
         voice: arrangement.voice.length, duration: formatDuration(arrangement.durationMs) })}</div>
       {arrangement.warnings.length > 0 && <div className="warnings">{arrangement.warnings.map(warning =>
         <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
+      <div className="transport">
+        <button className="transport-primary" onClick={isPlaying ? onPause : onPlay}
+          aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
+        <button className="transport-stop" onClick={onStop} aria-label={t('stopProgram')}>■</button>
+        <time>{formatDuration(positionMs, true)}</time>
+        <input type="range" min="0" max={arrangement.durationMs} step="100" value={positionMs}
+          onChange={(event) => onSeek(Number(event.target.value))} />
+        <time>{formatDuration(arrangement.durationMs)}</time>
+        <div className="gain-meter"><span>{t('musicGain')}</span><strong>{musicGainDb.toFixed(1)} dB</strong>
+          <i style={{ width: `${Math.max(0, Math.min(100, (musicGainDb + 80) / 80 * 100))}%` }} /></div>
+      </div>
       <div className="timeline-shell">
         <div className="track-labels">
           <div className="ruler-spacer" />
@@ -196,13 +259,17 @@ function Timeline({ arrangement }: { arrangement: Arrangement | null }) {
           <div><span className="track-dot music-dot" />{t('musicTrack')}</div>
         </div>
         <div className="timeline-scroll">
-          <div className="timeline-canvas" style={{ width: `${width}%` }}>
+          <div className="timeline-canvas" style={{ width: `${width}%` }} onClick={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            onSeek((event.clientX - bounds.left) / bounds.width * arrangement.durationMs);
+          }}>
             <div className="ruler">{markers.map(marker => <div className="marker" key={marker}
               style={{ left: `${marker / arrangement.durationMs * 100}%` }}><span>{formatDuration(marker)}</span></div>)}</div>
             <div className="track voice-track">{arrangement.voice.map(clip => <TimelineClipView key={clip.id} clip={clip}
               totalMs={arrangement.durationMs} t={t} />)}</div>
             <div className="track music-track">{arrangement.music.map(clip => <TimelineClipView key={clip.id} clip={clip}
               totalMs={arrangement.durationMs} t={t} />)}</div>
+            <div className="playhead" style={{ left: `${positionMs / arrangement.durationMs * 100}%` }}><span /></div>
           </div>
         </div>
       </div>
@@ -215,14 +282,19 @@ export default function App() {
   const [music, setMusic] = useState<MediaAsset[]>([]);
   const [voices, setVoices] = useState<MediaAsset[]>([]);
   const [settings, setSettings] = useState(defaultSettings);
+  const [audioSettings, setAudioSettings] = useState(defaultAudioSettings);
   const [arrangement, setArrangement] = useState<Arrangement | null>(null);
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
+  const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
+  const assetsRef = useRef<MediaAsset[]>([]);
+  assetsRef.current = allAssets;
+  const player = useTimelinePlayer(arrangement, allAssets, audioSettings);
 
   useEffect(() => () => {
     audio.current?.pause();
-    [...music, ...voices].forEach(asset => URL.revokeObjectURL(asset.previewUrl));
+    assetsRef.current.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
   }, []); // URLs are intentionally cleaned only when the app closes.
 
   const status = useMemo(() => arrangement ? formatDuration(arrangement.durationMs) : t('projectReady'), [arrangement, t]);
@@ -241,7 +313,7 @@ export default function App() {
   };
 
   const removeAsset = (id: string) => {
-    const asset = [...music, ...voices].find(item => item.id === id);
+    const asset = allAssets.find(item => item.id === id);
     if (asset) URL.revokeObjectURL(asset.previewUrl);
     setMusic(current => current.filter(item => item.id !== id));
     setVoices(current => current.filter(item => item.id !== id));
@@ -249,6 +321,7 @@ export default function App() {
   };
 
   const preview = (asset: MediaAsset) => {
+    player.pause();
     if (activePreview === asset.id) {
       audio.current?.pause();
       setActivePreview(null);
@@ -264,6 +337,7 @@ export default function App() {
   };
 
   const mount = () => {
+    player.stop();
     setArrangement(createArrangement(music, voices, settings));
   };
 
@@ -286,10 +360,14 @@ export default function App() {
           <AssetList kind="voice" assets={voices} activePreview={activePreview} onFiles={addFiles}
             onRemove={removeAsset} onPreview={preview} />
         </div>
-        <SettingsPanel settings={settings} mounted={Boolean(arrangement)} canMount={music.length + voices.length > 0}
-          onChange={(patch) => { setSettings(current => ({ ...current, ...patch })); setArrangement(null); }} onMount={mount} />
+        <SettingsPanel settings={settings} audioSettings={audioSettings} mounted={Boolean(arrangement)}
+          canMount={music.length + voices.length > 0}
+          onChange={(patch) => { player.stop(); setSettings(current => ({ ...current, ...patch })); setArrangement(null); }}
+          onAudioChange={(patch) => setAudioSettings(current => ({ ...current, ...patch }))} onMount={mount} />
       </div>
-      <Timeline arrangement={arrangement} />
+      <Timeline arrangement={arrangement} isPlaying={player.isPlaying} positionMs={player.positionMs}
+        musicGainDb={player.musicGainDb} onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
+        onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>
   </div>;
 }

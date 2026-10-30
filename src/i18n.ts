@@ -16,6 +16,8 @@ const resources = {
     repeatMusic: 'Repetir música al terminar', voicePlacement: 'Distribución de locuciones',
     interval: 'Intervalo fijo', uniform: 'Uniforme', intervalSeconds: 'Intervalo entre inicios', seconds: 'segundos',
     allowOverlap: 'Permitir solapamientos', seed: 'Semilla aleatoria',
+    audioMix: 'Mezcla y ducking', musicLevel: 'Nivel de música', voiceLevel: 'Nivel de voz',
+    duckingLevel: 'Música durante la voz', fadeDown: 'Tiempo de bajada', fadeUp: 'Tiempo de recuperación',
     mount: 'MONTAR PROGRAMA', remount: 'VOLVER A MONTAR',
     timeline: 'Línea de tiempo', timelineEmpty: 'Importa audio y pulsa MONTAR PROGRAMA',
     zoom: 'Zoom', voiceTrack: 'LOCUCIONES', musicTrack: 'MÚSICA', missingMusic: 'FALTA MÚSICA',
@@ -23,7 +25,8 @@ const resources = {
     warningMissingMusic: 'La música no cubre toda la duración. El área roja será silencio.',
     warningVoiceOutside: 'Algunas locuciones no caben completas dentro de la duración objetivo.',
     fileError: 'No se pudo leer uno o varios archivos de audio.',
-    language: 'Idioma', spanish: 'ES', english: 'EN', statusDraft: 'BORRADOR', duration: 'Duración'
+    language: 'Idioma', spanish: 'ES', english: 'EN', statusDraft: 'BORRADOR', duration: 'Duración',
+    playProgram: 'Reproducir programa', pauseProgram: 'Pausar programa', stopProgram: 'Detener programa', musicGain: 'Ganancia musical'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -39,6 +42,8 @@ const resources = {
     repeatMusic: 'Repeat music when it ends', voicePlacement: 'Voice distribution',
     interval: 'Fixed interval', uniform: 'Evenly spaced', intervalSeconds: 'Interval between starts', seconds: 'seconds',
     allowOverlap: 'Allow overlaps', seed: 'Random seed',
+    audioMix: 'Mix and ducking', musicLevel: 'Music level', voiceLevel: 'Voice level',
+    duckingLevel: 'Music under voice', fadeDown: 'Fade down time', fadeUp: 'Recovery time',
     mount: 'BUILD PROGRAM', remount: 'BUILD AGAIN',
     timeline: 'Timeline', timelineEmpty: 'Import audio and press BUILD PROGRAM',
     zoom: 'Zoom', voiceTrack: 'VOICE', musicTrack: 'MUSIC', missingMusic: 'MUSIC MISSING',
@@ -46,7 +51,8 @@ const resources = {
     warningMissingMusic: 'Music does not cover the full duration. The red area will be silence.',
     warningVoiceOutside: 'Some voice spots do not fit completely inside the target duration.',
     fileError: 'One or more audio files could not be read.',
-    language: 'Language', spanish: 'ES', english: 'EN', statusDraft: 'DRAFT', duration: 'Duration'
+    language: 'Language', spanish: 'ES', english: 'EN', statusDraft: 'DRAFT', duration: 'Duration',
+    playProgram: 'Play program', pauseProgram: 'Pause program', stopProgram: 'Stop program', musicGain: 'Music gain'
   } }
 };
 

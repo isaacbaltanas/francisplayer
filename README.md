@@ -43,3 +43,11 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - Línea de tiempo visual de dos pistas.
 - Regiones explícitas de música ausente.
 - Interfaz en español e inglés.
+
+## Versión 0.2
+
+- Reproducción de la línea de tiempo completa.
+- PLAY, PAUSE, STOP, búsqueda y cabezal sincronizado.
+- Niveles de música y voz configurables en dB.
+- Ducking con tiempos de bajada y recuperación.
+- Indicador de ganancia musical en tiempo real.

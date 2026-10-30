@@ -1,9 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { createArrangement, shuffleWithSeed } from '../src/lib/arrangement';
+import { calculateDuckingDb, dbToGain } from '../src/lib/audio';
 import type { ArrangementSettings, MediaAsset } from '../src/types';
 
 const asset = (id: string, kind: 'music' | 'voice', durationMs: number): MediaAsset => ({
   id, kind, durationMs, name: id, sizeBytes: 1, path: id, previewUrl: id, color: '#fff'
+});
+
+describe('audio automation', () => {
+  const audioSettings = { musicGainDb: -3, voiceGainDb: -1, duckingGainDb: -40, fadeDownMs: 1000, fadeUpMs: 2000 };
+  const voiceClip = { id: 'v', kind: 'voice' as const, name: 'voice', startMs: 10_000, durationMs: 5_000, color: '#fff' };
+
+  it('calculates fade down, hold and recovery in dB', () => {
+    expect(calculateDuckingDb(9_000, [voiceClip], audioSettings)).toBe(-3);
+    expect(calculateDuckingDb(9_500, [voiceClip], audioSettings)).toBeCloseTo(-21.5);
+    expect(calculateDuckingDb(12_000, [voiceClip], audioSettings)).toBe(-40);
+    expect(calculateDuckingDb(16_000, [voiceClip], audioSettings)).toBeCloseTo(-21.5);
+    expect(calculateDuckingDb(17_000, [voiceClip], audioSettings)).toBe(-3);
+  });
+
+  it('converts decibels to a safe linear gain', () => {
+    expect(dbToGain(0)).toBe(1);
+    expect(dbToGain(-6)).toBeCloseTo(.501, 2);
+    expect(dbToGain(6)).toBe(1);
+  });
 });
 
 const settings: ArrangementSettings = {
