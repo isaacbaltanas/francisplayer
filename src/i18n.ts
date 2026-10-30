@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next';
 
 const resources = {
   es: { translation: {
-    appSubtitle: 'Estudio de montaje automático',
+    appSubtitle: 'Estudio de montaje automático para megafonías',
     newProject: 'Proyecto sin título',
     projectReady: 'Proyecto listo para montar',
     library: 'Biblioteca', music: 'Música', voices: 'Locuciones',
@@ -76,7 +76,7 @@ const resources = {
     loudnessMeterHelp: 'M: momentáneo · S: corto · I: integrado · PK: pico'
   } },
   en: { translation: {
-    appSubtitle: 'Automatic arrangement studio',
+    appSubtitle: 'Automatic PA arrangement studio',
     newProject: 'Untitled project',
     projectReady: 'Project ready to arrange',
     library: 'Library', music: 'Music', voices: 'Voice spots',

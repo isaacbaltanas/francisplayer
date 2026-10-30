@@ -2,6 +2,13 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.11.1] - 2026-10-31
+
+### Corregido
+
+- Los controles nativos del campo numérico ya no ocultan el valor del intervalo.
+- El subtítulo identifica la aplicación como estudio de montaje automático para megafonías.
+
 ## [0.11.0] - 2026-10-31
 
 ### Añadido
