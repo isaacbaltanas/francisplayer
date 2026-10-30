@@ -2,13 +2,20 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.13.2] - 2026-10-31
+
+### Corregido
+
+- El tramo musical alto situado después de la locución admite arrastre vertical, igual que el tramo anterior.
+- El punto verde conserva el arrastre horizontal para editar la recuperación mientras la línea ajusta el nivel musical.
+
 ## [0.13.1] - 2026-10-31
 
 ### Corregido
 
 - La pista del editor gráfico es más alta y contiene por completo automatizaciones, puntos y etiquetas.
 - Los puntos mantienen forma circular independientemente del tamaño de la ventana.
-- Los puntos superiores de las transiciones se desplazan horizontalmente para editar bajada y recuperación.
+- Los puntos superiores se desplazan libremente en dos dimensiones: horizontalmente editan bajada/recuperación y verticalmente el nivel musical.
 - Los puntos de nivel se desplazan verticalmente para editar música, voz y ducking.
 - El cálculo del arrastre respeta la escala real del SVG incluso cuando cambia el tamaño del panel.
 

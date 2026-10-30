@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { dbToPercent, percentToDb } from '../lib/automation';
 import type { AudioSettings } from '../types';
 
-type DragTarget = 'music' | 'voice' | 'ducking' | 'fadeDown' | 'fadeUp';
+type DragTarget = 'music' | 'voice' | 'ducking' | 'fadeDown' | 'fadeUp' | 'fadeDownCorner' | 'fadeUpCorner';
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 const yForDb = (db: number) => 430 - dbToPercent(db) * 2.85;
@@ -33,14 +33,18 @@ export function MixDuckingGraph({ settings, onChange }: {
     pointer.x = event.clientX; pointer.y = event.clientY;
     const local = pointer.matrixTransform(matrix.inverse());
     const x = local.x; const y = local.y;
+    const percent = clamp((430 - y) / 2.85, 0, 100);
+    const level = Math.round(percentToDb(percent) * 2) / 2;
     if (drag === 'music' || drag === 'voice' || drag === 'ducking') {
-      const percent = clamp((430 - y) / 2.85, 0, 100);
-      const value = Math.round(percentToDb(percent) * 2) / 2;
-      if (drag === 'music') onChange({ musicGainDb: clamp(value, -60, 6) });
-      if (drag === 'voice') onChange({ voiceGainDb: clamp(value, -60, 6) });
-      if (drag === 'ducking') onChange({ duckingGainDb: clamp(value, -80, 0) });
+      if (drag === 'music') onChange({ musicGainDb: clamp(level, -60, 6) });
+      if (drag === 'voice') onChange({ voiceGainDb: clamp(level, -60, 6) });
+      if (drag === 'ducking') onChange({ duckingGainDb: clamp(level, -80, 0) });
     } else if (drag === 'fadeDown') onChange({ fadeDownMs: durationFromDistance(voiceStart - x) });
-    else onChange({ fadeUpMs: durationFromDistance(x - voiceEnd) });
+    else if (drag === 'fadeUp') onChange({ fadeUpMs: durationFromDistance(x - voiceEnd) });
+    else if (drag === 'fadeDownCorner') onChange({
+      fadeDownMs: durationFromDistance(voiceStart - x), musicGainDb: clamp(level, -60, 6)
+    });
+    else onChange({ fadeUpMs: durationFromDistance(x - voiceEnd), musicGainDb: clamp(level, -60, 6) });
   };
 
   const begin = (event: React.PointerEvent<SVGElement>, target: DragTarget) => {
@@ -76,18 +80,19 @@ export function MixDuckingGraph({ settings, onChange }: {
         onPointerDown={event => begin(event, 'voice')} />
 
       <line className="automation-hit" x1="20" x2={downStart} y1={highY} y2={highY} onPointerDown={event => begin(event, 'music')} />
+      <line className="automation-hit" x1={upEnd} x2="980" y1={highY} y2={highY} onPointerDown={event => begin(event, 'music')} />
       <line className="automation-hit" x1={voiceStart} x2={voiceEnd} y1={lowY} y2={lowY} onPointerDown={event => begin(event, 'ducking')} />
       <line className="automation-hit" x1={downStart} x2={voiceStart} y1={highY} y2={lowY} onPointerDown={event => begin(event, 'fadeDown')} />
       <line className="automation-hit" x1={voiceEnd} x2={upEnd} y1={lowY} y2={highY} onPointerDown={event => begin(event, 'fadeUp')} />
 
-      <circle className="automation-point mix-time-point" style={{ fill: '#d4ff62' }} cx={downStart} cy={highY} r="11"
-        onPointerDown={event => begin(event, 'fadeDown')} />
+      <circle className="automation-point mix-corner-point" style={{ fill: '#d4ff62' }} cx={downStart} cy={highY} r="11"
+        onPointerDown={event => begin(event, 'fadeDownCorner')} />
       <circle className="automation-point mix-level-point" style={{ fill: '#ff6f91' }} cx={voiceStart} cy={lowY} r="11"
         onPointerDown={event => begin(event, 'ducking')} />
       <circle className="automation-point mix-level-point" style={{ fill: '#ff6f91' }} cx={voiceEnd} cy={lowY} r="11"
         onPointerDown={event => begin(event, 'ducking')} />
-      <circle className="automation-point mix-time-point" style={{ fill: '#8dff68' }} cx={upEnd} cy={highY} r="11"
-        onPointerDown={event => begin(event, 'fadeUp')} />
+      <circle className="automation-point mix-corner-point" style={{ fill: '#8dff68' }} cx={upEnd} cy={highY} r="11"
+        onPointerDown={event => begin(event, 'fadeUpCorner')} />
       <circle className="mix-voice-point mix-level-point" cx={(voiceStart + voiceEnd) / 2} cy={voiceY} r="11" onPointerDown={event => begin(event, 'voice')} />
 
       {label(Math.max(82, downStart / 2), highY, `${t('musicLevel')} ${settings.musicGainDb.toFixed(1)} dB`)}

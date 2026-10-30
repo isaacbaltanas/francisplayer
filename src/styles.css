@@ -159,7 +159,7 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .mix-graph-label { pointer-events: none; }
 .mix-graph-label rect { fill: rgba(14,18,19,.9); stroke: rgba(160,255,230,.28); stroke-width: .7; vector-effect: non-scaling-stroke; }
 .mix-graph-label text { fill: #d9e2df; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; }
-.mix-time-point { cursor: ew-resize; filter: drop-shadow(0 0 5px currentColor); }
+.mix-corner-point { cursor: move; filter: drop-shadow(0 0 5px currentColor); }
 .mix-level-point { cursor: ns-resize; filter: drop-shadow(0 0 5px currentColor); }
 .compact-field input { width: 100%; }
 .automation-settings { display: grid; gap: 12px; padding: 15px 17px; align-content: start; }
