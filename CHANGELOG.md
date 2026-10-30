@@ -2,6 +2,16 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.13.1] - 2026-10-31
+
+### Corregido
+
+- La pista del editor gráfico es más alta y contiene por completo automatizaciones, puntos y etiquetas.
+- Los puntos mantienen forma circular independientemente del tamaño de la ventana.
+- Los puntos superiores de las transiciones se desplazan horizontalmente para editar bajada y recuperación.
+- Los puntos de nivel se desplazan verticalmente para editar música, voz y ducking.
+- El cálculo del arrastre respeta la escala real del SVG incluso cuando cambia el tamaño del panel.
+
 ## [0.13.0] - 2026-10-31
 
 ### Añadido

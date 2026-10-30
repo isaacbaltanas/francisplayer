@@ -144,21 +144,23 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .mix-values-grid { border-bottom: 1px solid #292e32; }
 .audio-processing-heading { padding: 9px 18px 0; border-top: 1px solid #292e32; }
 .audio-processing-heading h3 { margin: 0; color: #8e969b; font-size: 9px; text-transform: uppercase; letter-spacing: .09em; }
-.mix-ducking-graph { position: relative; height: 220px; margin: 7px 18px 13px; border: 1px solid #343c40; border-radius: 8px; background: linear-gradient(180deg, #151b1c, #111516); overflow: hidden; box-shadow: inset 0 1px rgba(255,255,255,.025); }
-.mix-ducking-graph svg { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 185px; touch-action: none; }
+.mix-ducking-graph { position: relative; height: 315px; margin: 7px 18px 13px; border: 1px solid #343c40; border-radius: 8px; background: linear-gradient(180deg, #151b1c, #111516); overflow: hidden; box-shadow: inset 0 1px rgba(255,255,255,.025); }
+.mix-ducking-graph svg { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 285px; touch-action: none; }
 .mix-graph-caption { position: absolute; z-index: 4; left: 10px; top: 7px; display: grid; pointer-events: none; }
 .mix-graph-caption span { color: #d3dad8; font-size: 8px; font-weight: 700; }
 .mix-graph-caption small { color: #697370; font-size: 6px; margin-top: 2px; }
 .mix-music-track { fill: #4f8cff18; stroke: #4f8cff55; stroke-width: 1; vector-effect: non-scaling-stroke; }
 .mix-voice-clip { fill: #de6ea8aa; stroke: #ffb4d5; stroke-opacity: .7; stroke-width: 1; vector-effect: non-scaling-stroke; filter: drop-shadow(0 3px 6px #0008); }
 .mix-preview-waveform line { stroke: rgba(255,255,255,.5); stroke-width: 1; vector-effect: non-scaling-stroke; pointer-events: none; }
-.mix-track-name, .mix-clip-name { fill: #dce3e7; font-size: 8px; font-weight: 700; letter-spacing: .04em; pointer-events: none; }
+.mix-track-name, .mix-clip-name { fill: #dce3e7; font-size: 14px; font-weight: 700; letter-spacing: .04em; pointer-events: none; }
 .mix-clip-name { fill: #fff; }
 .mix-voice-level { stroke: #67d9ff; stroke-width: 2; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; cursor: ns-resize; filter: drop-shadow(0 0 3px #67d9ffaa); }
 .mix-voice-point { fill: #67d9ff; stroke: #0c1111; stroke-width: 1.4; vector-effect: non-scaling-stroke; cursor: ns-resize; }
 .mix-graph-label { pointer-events: none; }
 .mix-graph-label rect { fill: rgba(14,18,19,.9); stroke: rgba(160,255,230,.28); stroke-width: .7; vector-effect: non-scaling-stroke; }
-.mix-graph-label text { fill: #d9e2df; font: 7px ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; }
+.mix-graph-label text { fill: #d9e2df; font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; text-anchor: middle; }
+.mix-time-point { cursor: ew-resize; filter: drop-shadow(0 0 5px currentColor); }
+.mix-level-point { cursor: ns-resize; filter: drop-shadow(0 0 5px currentColor); }
 .compact-field input { width: 100%; }
 .automation-settings { display: grid; gap: 12px; padding: 15px 17px; align-content: start; }
 .automation-settings .toggle-field { margin-top: 2px; }
