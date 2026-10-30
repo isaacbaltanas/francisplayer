@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { calculateDuckingDb, dbToGain } from '../lib/audio';
-import type { Arrangement, AudioSettings, MediaAsset, TimelineClip } from '../types';
+import { dbToGain } from '../lib/audio';
+import { calculateGroupedDuckingDb } from '../lib/automation';
+import type { Arrangement, AudioSettings, AutomationState, MediaAsset, TimelineClip } from '../types';
 
 interface PlayingElement {
   clipId: string;
@@ -27,7 +28,8 @@ const createPlayingElement = (asset: MediaAsset, clip: TimelineClip, positionMs:
 export const useTimelinePlayer = (
   arrangement: Arrangement | null,
   assets: MediaAsset[],
-  audioSettings: AudioSettings
+  audioSettings: AudioSettings,
+  automation: AutomationState | null
 ) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
@@ -48,7 +50,7 @@ export const useTimelinePlayer = (
   const syncElements = useCallback((nextPositionMs: number) => {
     if (!arrangement) return;
     const assetMap = new Map(assets.map(asset => [asset.id, asset]));
-    const nextMusicGainDb = calculateDuckingDb(nextPositionMs, arrangement.voice, audioSettings);
+    const nextMusicGainDb = calculateGroupedDuckingDb(nextPositionMs, arrangement.voice, automation, audioSettings);
     const musicVolume = dbToGain(nextMusicGainDb);
     setMusicGainDb(current => Math.abs(current - nextMusicGainDb) > .05 ? nextMusicGainDb : current);
 
@@ -84,7 +86,7 @@ export const useTimelinePlayer = (
       });
     });
     voicesRef.current.forEach(item => { item.element.volume = dbToGain(audioSettings.voiceGainDb); });
-  }, [arrangement, assets, audioSettings]);
+  }, [arrangement, assets, audioSettings, automation]);
 
   const pause = useCallback(() => {
     setIsPlaying(false);

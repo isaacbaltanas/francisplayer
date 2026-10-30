@@ -32,6 +32,32 @@ export interface AudioSettings {
   fadeUpMs: number;
 }
 
+export type AutomationDisplayUnit = 'percent' | 'db';
+export type AutomationGroupType = 'high' | 'low' | 'fadeDown' | 'fadeUp';
+
+export interface AutomationGroup {
+  id: string;
+  type: AutomationGroupType;
+  index: number;
+  value: number;
+  color: string;
+}
+
+export interface AutomationAssignment {
+  voiceClipId: string;
+  highGroupId: string;
+  lowGroupId: string;
+  fadeDownGroupId: string;
+  fadeUpGroupId: string;
+}
+
+export interface AutomationState {
+  displayUnit: AutomationDisplayUnit;
+  visible: boolean;
+  groups: AutomationGroup[];
+  assignments: AutomationAssignment[];
+}
+
 export interface TimelineClip {
   id: string;
   assetId?: string;

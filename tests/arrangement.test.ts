@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createArrangement, shuffleWithSeed } from '../src/lib/arrangement';
 import { calculateDuckingDb, dbToGain } from '../src/lib/audio';
+import {
+  calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
+  updateAutomationGroup
+} from '../src/lib/automation';
 import type { ArrangementSettings, MediaAsset } from '../src/types';
 
 const asset = (id: string, kind: 'music' | 'voice', durationMs: number): MediaAsset => ({
@@ -23,6 +27,38 @@ describe('audio automation', () => {
     expect(dbToGain(0)).toBe(1);
     expect(dbToGain(-6)).toBeCloseTo(.501, 2);
     expect(dbToGain(6)).toBe(1);
+  });
+});
+
+describe('automation groups', () => {
+  const audioSettings = { musicGainDb: -3, voiceGainDb: -1, duckingGainDb: -40, fadeDownMs: 1000, fadeUpMs: 2000 };
+  const arrangement = createArrangement(
+    [asset('song', 'music', 100_000)],
+    [asset('v1', 'voice', 5_000), asset('v2', 'voice', 5_000)],
+    { ...settings, voiceIntervalMs: 30_000 }
+  );
+
+  it('links every voice event to the same default style groups', () => {
+    const state = createAutomationState(arrangement, audioSettings);
+    expect(state.assignments).toHaveLength(2);
+    expect(new Set(state.assignments.map(item => item.lowGroupId)).size).toBe(1);
+    expect(new Set(state.assignments.map(item => item.fadeDownGroupId)).size).toBe(1);
+  });
+
+  it('detaches only one event into a new style group', () => {
+    const state = createAutomationState(arrangement, audioSettings);
+    const detached = detachAutomationGroup(state, arrangement.voice[0].id, 'low');
+    expect(detached.state.assignments[0].lowGroupId).toBe(detached.groupId);
+    expect(detached.state.assignments[1].lowGroupId).toBe(state.assignments[1].lowGroupId);
+    expect(detached.state.groups).toHaveLength(state.groups.length + 1);
+  });
+
+  it('uses a changed group value in playback gain calculation', () => {
+    const state = createAutomationState(arrangement, audioSettings);
+    const lowGroup = state.assignments[0].lowGroupId;
+    const changed = updateAutomationGroup(state, lowGroup, 20);
+    const atVoice = arrangement.voice[0].startMs + 1000;
+    expect(calculateGroupedDuckingDb(atVoice, arrangement.voice, changed, audioSettings)).toBeCloseTo(-13.98, 1);
   });
 });
 

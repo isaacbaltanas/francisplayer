@@ -18,7 +18,10 @@ const createWindow = async () => {
     }
   });
 
-  window.once('ready-to-show', () => window.show());
+  window.once('ready-to-show', () => {
+    window.maximize();
+    window.show();
+  });
   window.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: 'deny' };

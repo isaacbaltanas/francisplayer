@@ -51,3 +51,15 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - Niveles de música y voz configurables en dB.
 - Ducking con tiempos de bajada y recuperación.
 - Indicador de ganancia musical en tiempo real.
+
+## Versión 0.3
+
+- Aplicación maximizada al iniciar.
+- Línea de tiempo con al menos el 40 % de la ventana.
+- Configuración compacta mediante pestañas.
+- Editor de automatización agrupada con porcentajes o decibelios.
+- Ducking Alto, Ducking Bajo y transiciones de entrada/salida vinculables.
+- `Shift` para separar un segmento y menú contextual para reasignar grupos.
+- Automatizaciones visibles u ocultables y conectadas a la reproducción.
+
+Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

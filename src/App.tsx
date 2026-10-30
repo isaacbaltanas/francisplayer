@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { createArrangement } from './lib/arrangement';
+import { createAutomationState, syncDefaultAutomationGroups } from './lib/automation';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
 import { useTimelinePlayer } from './hooks/useTimelinePlayer';
-import type { Arrangement, ArrangementSettings, AudioSettings, MediaAsset, MediaKind, TimelineClip } from './types';
+import { AutomationEditor } from './components/AutomationEditor';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, MediaAsset, MediaKind, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -53,7 +55,6 @@ function AssetList({ kind, assets, activePreview, onFiles, onRemove, onPreview }
   return <section className={`asset-panel ${kind}`}>
     <div className="panel-heading">
       <div>
-        <p className="eyebrow">{kind === 'music' ? 'MUSIC' : 'VOICE'}</p>
         <h2>{t(kind === 'music' ? 'music' : 'voices')}</h2>
       </div>
       <span className="count-pill">{assets.length}</span>
@@ -94,24 +95,32 @@ function AssetList({ kind, assets, activePreview, onFiles, onRemove, onPreview }
 interface SettingsPanelProps {
   settings: ArrangementSettings;
   audioSettings: AudioSettings;
+  automation: AutomationState | null;
   mounted: boolean;
   canMount: boolean;
   onChange: (patch: Partial<ArrangementSettings>) => void;
   onAudioChange: (patch: Partial<AudioSettings>) => void;
+  onAutomationChange: (state: AutomationState) => void;
   onMount: () => void;
 }
 
-function SettingsPanel({ settings, audioSettings, mounted, canMount, onChange, onAudioChange, onMount }: SettingsPanelProps) {
+function SettingsPanel({ settings, audioSettings, automation, mounted, canMount, onChange, onAudioChange, onAutomationChange, onMount }: SettingsPanelProps) {
   const { t } = useTranslation();
+  const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation'>('arrangement');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
 
   return <aside className="settings-panel">
     <div className="panel-heading settings-title">
-      <div><p className="eyebrow">ARRANGEMENT</p><h2>{t('setup')}</h2></div>
+      <div><h2>{t('setup')}</h2></div>
       <span className="sliders-icon">☷</span>
     </div>
 
-    <div className="settings-grid">
+    <div className="settings-tabs">
+      {(['arrangement', 'audio', 'automation'] as const).map(item => <button key={item}
+        className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{t(`settingsTab_${item}`)}</button>)}
+    </div>
+
+    {tab === 'arrangement' && <div className="settings-grid">
       <label className="field full">
         <span>{t('targetDuration')}</span>
         <div className="number-field"><input type="number" min="1" max="360" value={targetMinutes}
@@ -146,9 +155,9 @@ function SettingsPanel({ settings, audioSettings, mounted, canMount, onChange, o
         <span>{t('seed')}</span>
         <input type="number" value={settings.seed} onChange={(event) => onChange({ seed: Number(event.target.value) || 1 })} />
       </label>
-    </div>
+    </div>}
 
-    <div className="audio-settings-heading"><p className="eyebrow">AUDIO</p><h3>{t('audioMix')}</h3></div>
+    {tab === 'audio' && <div className="settings-tab-content"><div className="audio-settings-heading"><h3>{t('audioMix')}</h3></div>
     <div className="audio-settings-grid">
       <DbField label={t('musicLevel')} value={audioSettings.musicGainDb}
         onChange={(musicGainDb) => onAudioChange({ musicGainDb })} />
@@ -160,7 +169,17 @@ function SettingsPanel({ settings, audioSettings, mounted, canMount, onChange, o
         onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
       <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs}
         onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
-    </div>
+    </div></div>}
+
+    {tab === 'automation' && <div className="settings-tab-content automation-settings">
+      <Segmented label={t('displayLevelsAs')} value={automation?.displayUnit ?? 'percent'} full options={[
+        ['percent', t('percentage')], ['db', 'dB']
+      ]} onChange={(value) => automation && onAutomationChange({ ...automation, displayUnit: value as AutomationState['displayUnit'] })} />
+      <Toggle label={t('showAutomations')} checked={automation?.visible ?? true}
+        onChange={(visible) => automation && onAutomationChange({ ...automation, visible })} />
+      <div className="shortcut-card"><kbd>⇧ Shift</kbd><p>{t('shiftAutomationHint')}</p></div>
+      <p className="settings-help">{t('automationSettingsHelp')}</p>
+    </div>}
 
     <button className="mount-button" disabled={!canMount} onClick={onMount}>
       <span className="mount-symbol">✦</span>{t(mounted ? 'remount' : 'mount')}<span className="arrow">→</span>
@@ -216,13 +235,15 @@ interface TimelineProps {
   isPlaying: boolean;
   positionMs: number;
   musicGainDb: number;
+  automation: AutomationState | null;
+  onAutomationChange: (state: AutomationState) => void;
   onPlay: () => void;
   onPause: () => void;
   onStop: () => void;
   onSeek: (positionMs: number) => void;
 }
 
-function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, onPlay, onPause, onStop, onSeek }: TimelineProps) {
+function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, automation, onAutomationChange, onPlay, onPause, onStop, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const width = arrangement ? Math.max(100, arrangement.durationMs / 60_000 * 70 * zoom) : 100;
@@ -231,7 +252,7 @@ function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, onPlay, onP
 
   return <section className="timeline-section">
     <header className="timeline-header">
-      <div><p className="eyebrow">PROGRAM</p><h2>{t('timeline')}</h2></div>
+      <div><h2>{t('timeline')}</h2></div>
       <div className="zoom-control"><span>{t('zoom')}</span><button onClick={() => setZoom(Math.max(.5, zoom - .25))}>−</button>
         <output>{Math.round(zoom * 100)}%</output><button onClick={() => setZoom(Math.min(4, zoom + .25))}>＋</button></div>
     </header>
@@ -257,6 +278,7 @@ function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, onPlay, onP
           <div className="ruler-spacer" />
           <div><span className="track-dot voice-dot" />{t('voiceTrack')}</div>
           <div><span className="track-dot music-dot" />{t('musicTrack')}</div>
+          {automation?.visible && <div className="automation-track-label"><span className="track-dot automation-dot" />{t('automationTrack')}</div>}
         </div>
         <div className="timeline-scroll">
           <div className="timeline-canvas" style={{ width: `${width}%` }} onClick={(event) => {
@@ -269,6 +291,7 @@ function Timeline({ arrangement, isPlaying, positionMs, musicGainDb, onPlay, onP
               totalMs={arrangement.durationMs} t={t} />)}</div>
             <div className="track music-track">{arrangement.music.map(clip => <TimelineClipView key={clip.id} clip={clip}
               totalMs={arrangement.durationMs} t={t} />)}</div>
+            {automation?.visible && <AutomationEditor arrangement={arrangement} state={automation} onChange={onAutomationChange} />}
             <div className="playhead" style={{ left: `${positionMs / arrangement.durationMs * 100}%` }}><span /></div>
           </div>
         </div>
@@ -284,13 +307,14 @@ export default function App() {
   const [settings, setSettings] = useState(defaultSettings);
   const [audioSettings, setAudioSettings] = useState(defaultAudioSettings);
   const [arrangement, setArrangement] = useState<Arrangement | null>(null);
+  const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const assetsRef = useRef<MediaAsset[]>([]);
   assetsRef.current = allAssets;
-  const player = useTimelinePlayer(arrangement, allAssets, audioSettings);
+  const player = useTimelinePlayer(arrangement, allAssets, audioSettings, automation);
 
   useEffect(() => () => {
     audio.current?.pause();
@@ -307,6 +331,7 @@ export default function App() {
       if (kind === 'music') setMusic(current => [...current, ...assets]);
       else setVoices(current => [...current, ...assets]);
       setArrangement(null);
+      setAutomation(null);
     } catch {
       setError(t('fileError'));
     }
@@ -318,6 +343,7 @@ export default function App() {
     setMusic(current => current.filter(item => item.id !== id));
     setVoices(current => current.filter(item => item.id !== id));
     setArrangement(null);
+    setAutomation(null);
   };
 
   const preview = (asset: MediaAsset) => {
@@ -338,7 +364,9 @@ export default function App() {
 
   const mount = () => {
     player.stop();
-    setArrangement(createArrangement(music, voices, settings));
+    const next = createArrangement(music, voices, settings);
+    setArrangement(next);
+    setAutomation(createAutomationState(next, audioSettings));
   };
 
   return <div className="app-shell">
@@ -360,13 +388,18 @@ export default function App() {
           <AssetList kind="voice" assets={voices} activePreview={activePreview} onFiles={addFiles}
             onRemove={removeAsset} onPreview={preview} />
         </div>
-        <SettingsPanel settings={settings} audioSettings={audioSettings} mounted={Boolean(arrangement)}
+        <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} mounted={Boolean(arrangement)}
           canMount={music.length + voices.length > 0}
-          onChange={(patch) => { player.stop(); setSettings(current => ({ ...current, ...patch })); setArrangement(null); }}
-          onAudioChange={(patch) => setAudioSettings(current => ({ ...current, ...patch }))} onMount={mount} />
+          onChange={(patch) => { player.stop(); setSettings(current => ({ ...current, ...patch })); setArrangement(null); setAutomation(null); }}
+          onAudioChange={(patch) => {
+            setAudioSettings(current => ({ ...current, ...patch }));
+            setAutomation(current => current ? syncDefaultAutomationGroups(current, patch) : current);
+          }}
+          onAutomationChange={setAutomation} onMount={mount} />
       </div>
       <Timeline arrangement={arrangement} isPlaying={player.isPlaying} positionMs={player.positionMs}
-        musicGainDb={player.musicGainDb} onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
+        musicGainDb={player.musicGainDb} automation={automation} onAutomationChange={setAutomation}
+        onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
         onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>
   </div>;
