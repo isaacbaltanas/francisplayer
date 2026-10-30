@@ -2,6 +2,13 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.11.2] - 2026-10-31
+
+### Corregido
+
+- Los sliders y campos de duración avanzan únicamente por minutos enteros.
+- El intervalo entre locuciones avanza únicamente por segundos enteros, sin valores con coma.
+
 ## [0.11.1] - 2026-10-31
 
 ### Corregido

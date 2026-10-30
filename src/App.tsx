@@ -233,7 +233,8 @@ interface SettingsPanelProps {
 function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, voiceAssets, onChange, onAudioChange, onAutomationChange, onEditingPreferencesChange, onMount }: SettingsPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
-  const targetMinutes = Math.round(settings.targetDurationMs / 6_000) / 10;
+  const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
+  const intervalSeconds = Math.round(settings.voiceIntervalMs / 1000);
   const targetSliderMax = Math.max(360, Math.ceil(voiceScheduleDuration(voiceAssets, 300_000, settings.allowVoiceOverlap) / 60_000));
   const changeTarget = (targetDurationMs: number) => onChange({
     targetDurationMs,
@@ -260,10 +261,10 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
     {tab === 'arrangement' && <div className="settings-grid">
       <label className="field full">
         <span>{t('targetDuration')}</span>
-        <div className="linked-range"><input type="range" min="1" max={targetSliderMax} step="0.1" value={targetMinutes}
-          onChange={(event) => changeTarget(Math.max(1, Number(event.target.value)) * 60_000)} />
-        <div className="number-field"><input type="number" min="1" max={targetSliderMax} step="0.1" value={targetMinutes}
-          onChange={(event) => changeTarget(Math.max(1, Number(event.target.value)) * 60_000)} />
+        <div className="linked-range"><input type="range" min="1" max={targetSliderMax} step="1" value={targetMinutes}
+          onChange={(event) => changeTarget(Math.max(1, Math.round(Number(event.target.value))) * 60_000)} />
+        <div className="number-field"><input type="number" min="1" max={targetSliderMax} step="1" value={targetMinutes}
+          onChange={(event) => changeTarget(Math.max(1, Math.round(Number(event.target.value))) * 60_000)} />
           <em>{t('minutes')}</em></div>
         </div>
       </label>
@@ -292,10 +293,10 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
 
       {settings.voicePlacement === 'interval' && <label className="field full">
         <span>{t('intervalSeconds')}</span>
-        <div className="linked-range"><input type="range" min="0" max="300" step="0.1" value={settings.voiceIntervalMs / 1000}
-          onChange={(event) => changeInterval(Math.max(0, Number(event.target.value)) * 1000)} />
-        <div className="number-field"><input type="number" min="0" max="300" step="0.1" value={settings.voiceIntervalMs / 1000}
-          onChange={(event) => changeInterval(Math.max(0, Number(event.target.value)) * 1000)} />
+        <div className="linked-range"><input type="range" min="0" max="300" step="1" value={intervalSeconds}
+          onChange={(event) => changeInterval(Math.max(0, Math.round(Number(event.target.value))) * 1000)} />
+        <div className="number-field"><input type="number" min="0" max="300" step="1" value={intervalSeconds}
+          onChange={(event) => changeInterval(Math.max(0, Math.round(Number(event.target.value))) * 1000)} />
           <em>{t('seconds')}</em></div>
         </div>
       </label>}
@@ -914,7 +915,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.11.1', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.11.2', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

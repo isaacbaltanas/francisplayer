@@ -80,7 +80,7 @@ export const intervalForVoiceDuration = (assets: MediaAsset[], targetDurationMs:
     if (voiceScheduleDuration(assets, middle, allowOverlap) <= targetDurationMs) low = middle;
     else high = middle;
   }
-  return Math.round(low / 100) * 100;
+  return Math.round(low / 1000) * 1000;
 };
 
 export const preserveManualVoicePositions = (previous: TimelineClip[], generated: TimelineClip[], durationMs: number): TimelineClip[] => {
