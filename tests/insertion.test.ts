@@ -3,11 +3,11 @@ import { createInsertionSequence, parseInsertionPattern } from '../src/lib/inser
 import type { InsertionConfig, LibraryTab, MediaAsset } from '../src/types';
 
 const tabs: LibraryTab[] = [1, 2, 3].map(index => ({
-  id: `t${index}`, kind: 'voice', name: `Voice ${index}`, color: '#fff', localAutomationEnabled: false
+  id: `t${index}`, kind: 'voice', name: `Voice ${index}`, color: '#fff', localAutomationEnabled: false, automationPoints: []
 }));
 const assets = ['1a', '1b', '2a', '2b', '3a'].map(name => ({
   id: name, name, kind: 'voice', libraryTabId: `t${name[0]}`, durationMs: 1_000,
-  sizeBytes: 1, path: name, previewUrl: name, color: '#fff'
+  sizeBytes: 1, path: name, previewUrl: name, color: '#fff', waveform: []
 } satisfies MediaAsset));
 const config = (mode: InsertionConfig['mode'], customPattern = ''): InsertionConfig => ({ mode, customPattern });
 

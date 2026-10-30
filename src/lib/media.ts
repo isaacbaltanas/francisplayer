@@ -26,11 +26,31 @@ const readDuration = (url: string) => new Promise<number>((resolve, reject) => {
   audio.src = url;
 });
 
+const readWaveform = async (file: File, bins = 120): Promise<number[]> => {
+  try {
+    const context = new AudioContext();
+    const buffer = await context.decodeAudioData(await file.arrayBuffer());
+    const channel = buffer.getChannelData(0);
+    const size = Math.max(1, Math.floor(channel.length / bins));
+    const waveform = Array.from({ length: bins }, (_, bin) => {
+      let peak = 0;
+      const end = Math.min(channel.length, (bin + 1) * size);
+      for (let index = bin * size; index < end; index += 1) peak = Math.max(peak, Math.abs(channel[index]));
+      return Math.max(.025, Math.min(1, peak));
+    });
+    await context.close();
+    return waveform;
+  } catch {
+    return [];
+  }
+};
+
 export const filesToAssets = async (files: File[], kind: MediaKind, libraryTabId: string): Promise<MediaAsset[]> => {
   return Promise.all(files.map(async (file, index) => {
     const previewUrl = URL.createObjectURL(file);
     try {
       const durationMs = await readDuration(previewUrl);
+      const waveform = await readWaveform(file);
       return {
         id: `${kind}-${Date.now()}-${index}-${crypto.randomUUID()}`,
         kind,
@@ -40,7 +60,8 @@ export const filesToAssets = async (files: File[], kind: MediaKind, libraryTabId
         path: window.francisDesktop?.getPathForFile(file) ?? file.name,
         previewUrl,
         color: colorForAsset(file.name),
-        libraryTabId
+        libraryTabId,
+        waveform
       };
     } catch (error) {
       URL.revokeObjectURL(previewUrl);

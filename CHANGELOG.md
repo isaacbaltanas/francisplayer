@@ -2,6 +2,20 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.6.0] - 2026-10-30
+
+### Añadido
+
+- Forma de onda extraída del audio y dibujada dentro de cada región de la línea de tiempo.
+- Tiradores en las esquinas superiores para crear `fade in` y `fade out` locales al estilo Logic.
+- Curvas visibles de fade y aplicación real de su ganancia durante la reproducción.
+- Reproducción simultánea de todas las regiones de música y voz que coinciden temporalmente.
+- Transparencia y contorno de advertencia en regiones solapadas.
+- Detección específica y aviso localizado cuando se solapan locuciones.
+- Automatización local convencional por pista, con puntos añadibles por doble clic, movibles y eliminables con botón derecho.
+- Interpolación de automatización local conectada al motor de audio.
+- Pruebas de fades, interpolación y detección de solapamientos.
+
 ## [0.5.0] - 2026-10-30
 
 ### Añadido

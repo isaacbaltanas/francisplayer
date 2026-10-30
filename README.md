@@ -76,4 +76,10 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - Creación, nombre, orden, eliminación y automatización local por pestaña.
 - Inserción de una lista, todas en orden, alternadas, aleatorias o mediante un patrón personalizado.
 
+## Versión 0.6
+
+- Regiones con forma de onda, fades locales desde las esquinas y mezcla simultánea.
+- Transparencia y aviso de locuciones solapadas.
+- Automatización local con puntos e interpolación por cada pista.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

@@ -10,6 +10,13 @@ export interface LibraryTab {
   name: string;
   color: string;
   localAutomationEnabled: boolean;
+  automationPoints: TrackAutomationPoint[];
+}
+
+export interface TrackAutomationPoint {
+  id: string;
+  position: number;
+  value: number;
 }
 
 export interface InsertionConfig {
@@ -27,6 +34,7 @@ export interface MediaAsset {
   previewUrl: string;
   color: string;
   libraryTabId: string;
+  waveform: number[];
 }
 
 export interface ArrangementSettings {
@@ -87,6 +95,8 @@ export interface TimelineClip {
   truncated?: boolean;
   manuallyPositioned?: boolean;
   libraryTabId?: string;
+  fadeInMs?: number;
+  fadeOutMs?: number;
 }
 
 export interface Arrangement {

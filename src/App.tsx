@@ -7,8 +7,10 @@ import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
 import { useTimelinePlayer } from './hooks/useTimelinePlayer';
 import { AutomationEditor } from './components/AutomationEditor';
+import { TrackAutomationLane } from './components/TrackAutomationLane';
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
+import { overlappingClipIds } from './lib/overlaps';
 import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, InsertionConfig, LibraryTab, MediaAsset, MediaKind, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
@@ -40,8 +42,8 @@ const defaultEditingPreferences: EditingPreferences = {
 const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
 const tabColors = ['#4f8cff', '#de6ea8', '#4eb6a1', '#d4a63d', '#9b72cf', '#e77d50'];
 const initialTabs: LibraryTab[] = [
-  { id: 'music-1', kind: 'music', name: 'Música 1', color: '#4f8cff', localAutomationEnabled: false },
-  { id: 'voice-1', kind: 'voice', name: 'Locuciones 1', color: '#de6ea8', localAutomationEnabled: false }
+  { id: 'music-1', kind: 'music', name: 'Música 1', color: '#4f8cff', localAutomationEnabled: false, automationPoints: [] },
+  { id: 'voice-1', kind: 'voice', name: 'Locuciones 1', color: '#de6ea8', localAutomationEnabled: false, automationPoints: [] }
 ];
 const defaultInsertion: InsertionConfig = { mode: 'all', customPattern: '1, 2, 1, 3' };
 
@@ -306,8 +308,10 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
     onChange={(event) => onChange(event.target.checked)} /><i /></label>;
 }
 
-function TimelineClipView({ clip, arrangement, canvasRef, preferences, dimmed, highlighted, onMove, onRemove, onDragEnd }: {
+function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef, preferences, dimmed, highlighted, onMove, onRemove, onFadeChange, onDragEnd }: {
   clip: TimelineClip;
+  waveform: number[];
+  overlapping: boolean;
   arrangement: Arrangement;
   canvasRef: React.RefObject<HTMLDivElement | null>;
   preferences: EditingPreferences;
@@ -315,16 +319,24 @@ function TimelineClipView({ clip, arrangement, canvasRef, preferences, dimmed, h
   highlighted: boolean;
   onMove: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
   onRemove: (clip: TimelineClip) => void;
+  onFadeChange: (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => void;
   onDragEnd: () => void;
 }) {
   const { t } = useTranslation();
   const [drag, setDrag] = useState<{ clientX: number; startMs: number } | null>(null);
+  const [fadeDrag, setFadeDrag] = useState<{ edge: 'in' | 'out'; clientX: number; initialMs: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const totalMs = arrangement.durationMs;
   const left = (clip.startMs / totalMs) * 100;
   const width = Math.max((clip.durationMs / totalMs) * 100, 0.18);
   const style = { left: `${left}%`, width: `${width}%`, backgroundColor: clip.color };
-  return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''} ${drag ? 'dragging' : ''} ${dimmed ? 'clip-dimmed' : ''} ${highlighted ? 'clip-highlighted' : ''}`} style={style}
+  const fadeInPercent = Math.min(100, (clip.fadeInMs ?? 0) / clip.durationMs * 100);
+  const fadeOutPercent = Math.min(100, (clip.fadeOutMs ?? 0) / clip.durationMs * 100);
+  const startFadeDrag = (event: React.PointerEvent<HTMLButtonElement>, edge: 'in' | 'out') => {
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    setFadeDrag({ edge, clientX: event.clientX, initialMs: edge === 'in' ? (clip.fadeInMs ?? 0) : (clip.fadeOutMs ?? 0) });
+  };
+  return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''} ${drag ? 'dragging' : ''} ${dimmed ? 'clip-dimmed' : ''} ${highlighted ? 'clip-highlighted' : ''} ${overlapping ? 'clip-overlapping' : ''}`} style={style}
     title={`${clip.kind === 'missing' ? t('missingMusic') : clip.name} · ${formatDuration(clip.durationMs)}`}
     onPointerDown={(event) => {
       if (clip.kind === 'missing' || event.button !== 0) return;
@@ -355,6 +367,25 @@ function TimelineClipView({ clip, arrangement, canvasRef, preferences, dimmed, h
       event.preventDefault(); event.stopPropagation();
       setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
     }}>
+    {clip.kind !== 'missing' && <svg className="clip-waveform" viewBox={`0 0 ${Math.max(1, waveform.length)} 100`} preserveAspectRatio="none" aria-hidden="true">
+      {waveform.map((peak, index) => <line key={index} x1={index + .5} x2={index + .5} y1={50 - peak * 43} y2={50 + peak * 43} />)}
+    </svg>}
+    {clip.kind !== 'missing' && <svg className="clip-fades" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      {fadeInPercent > 0 && <path d={`M0 100 Q ${fadeInPercent * .35} 10 ${fadeInPercent} 0`} />}
+      {fadeOutPercent > 0 && <path d={`M${100 - fadeOutPercent} 0 Q ${100 - fadeOutPercent * .35} 10 100 100`} />}
+    </svg>}
+    {clip.kind !== 'missing' && <button className="fade-handle fade-in" title={t('fadeInHandle')}
+      onPointerDown={(event) => startFadeDrag(event, 'in')} onPointerMove={(event) => {
+        if (!fadeDrag || fadeDrag.edge !== 'in') return; event.stopPropagation();
+        const px = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 1;
+        onFadeChange(clip.id, clip.kind, 'in', Math.max(0, Math.min(clip.durationMs, fadeDrag.initialMs + (event.clientX - fadeDrag.clientX) / px * clip.durationMs)));
+      }} onPointerUp={() => setFadeDrag(null)}>◢</button>}
+    {clip.kind !== 'missing' && <button className="fade-handle fade-out" title={t('fadeOutHandle')}
+      onPointerDown={(event) => startFadeDrag(event, 'out')} onPointerMove={(event) => {
+        if (!fadeDrag || fadeDrag.edge !== 'out') return; event.stopPropagation();
+        const px = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 1;
+        onFadeChange(clip.id, clip.kind, 'out', Math.max(0, Math.min(clip.durationMs, fadeDrag.initialMs - (event.clientX - fadeDrag.clientX) / px * clip.durationMs)));
+      }} onPointerUp={() => setFadeDrag(null)}>◣</button>}
     <span>{clip.kind === 'missing' ? t('missingMusic') : clip.name}</span>
     {clip.kind !== 'missing' && <small>{formatDuration(clip.durationMs)}</small>}
     {clip.manuallyPositioned && <i className="manual-position-dot" title={t('manuallyPositioned')} />}
@@ -369,6 +400,7 @@ function TimelineClipView({ clip, arrangement, canvasRef, preferences, dimmed, h
 interface TimelineProps {
   arrangement: Arrangement | null;
   tabs: LibraryTab[];
+  assets: MediaAsset[];
   isPlaying: boolean;
   positionMs: number;
   musicGainDb: number;
@@ -379,6 +411,8 @@ interface TimelineProps {
   onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
   onMoveClip: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
   onRemoveClip: (clip: TimelineClip) => void;
+  onFadeChange: (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => void;
+  onTabChange: (id: string, patch: Partial<LibraryTab>) => void;
   onDropAsset: (assetId: string, kind: MediaKind, startMs: number) => void;
   onPlay: () => void;
   onPause: () => void;
@@ -386,8 +420,8 @@ interface TimelineProps {
   onSeek: (positionMs: number) => void;
 }
 
-function Timeline({ arrangement, tabs, isPlaying, positionMs, musicGainDb, automation, editingPreferences, highlightedAssetIds,
-  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onDropAsset, onPlay, onPause, onStop, onSeek }: TimelineProps) {
+function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, automation, editingPreferences, highlightedAssetIds,
+  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onStop, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
@@ -396,6 +430,8 @@ function Timeline({ arrangement, tabs, isPlaying, positionMs, musicGainDb, autom
   const markerStepMs = arrangement && arrangement.durationMs <= 15 * 60_000 ? 60_000 : 5 * 60_000;
   const markers = arrangement ? Array.from({ length: Math.floor(arrangement.durationMs / markerStepMs) + 1 }, (_, index) => index * markerStepMs) : [];
   const timelineTabs = [...tabs.filter(tab => tab.kind === 'voice'), ...tabs.filter(tab => tab.kind === 'music')];
+  const waveforms = new Map(assets.map(asset => [asset.id, asset.waveform]));
+  const voiceOverlaps = arrangement ? overlappingClipIds(arrangement.voice) : new Set<string>();
 
   return <section className="timeline-section">
     <header className="timeline-header">
@@ -418,6 +454,7 @@ function Timeline({ arrangement, tabs, isPlaying, positionMs, musicGainDb, autom
         voice: arrangement.voice.length, duration: formatDuration(arrangement.durationMs) })}</div>
       {arrangement.warnings.length > 0 && <div className="warnings">{arrangement.warnings.map(warning =>
         <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
+      {voiceOverlaps.size > 0 && <div className="warnings overlap-warning"><p>! {t('warningVoiceOverlap', { count: voiceOverlaps.size })}</p></div>}
       <div className="transport">
         <button className="transport-primary" onClick={isPlaying ? onPause : onPlay}
           aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
@@ -455,11 +492,14 @@ function Timeline({ arrangement, tabs, isPlaying, positionMs, musicGainDb, autom
               {(tab.kind === 'voice' ? arrangement.voice : arrangement.music).filter(clip => clip.libraryTabId === tab.id ||
                 (clip.kind === 'missing' && tab.kind === 'music' && tabIndex === timelineTabs.findIndex(item => item.kind === 'music')))
                 .map(clip => <TimelineClipView key={clip.id} clip={clip}
+                  waveform={clip.assetId ? (waveforms.get(clip.assetId) ?? []) : []} overlapping={voiceOverlaps.has(clip.id)}
                   arrangement={arrangement} canvasRef={canvasRef} preferences={editingPreferences}
                   dimmed={highlightedAssetIds.size > 0 && !highlightedAssetIds.has(clip.assetId ?? '')}
                   highlighted={highlightedAssetIds.has(clip.assetId ?? '')}
-                  onMove={(...args) => { setSnapGuideMs(args[3]); onMoveClip(...args); }} onRemove={onRemoveClip}
+                  onMove={(...args) => { setSnapGuideMs(args[3]); onMoveClip(...args); }} onRemove={onRemoveClip} onFadeChange={onFadeChange}
                   onDragEnd={() => setSnapGuideMs(null)} />)}
+              {tab.localAutomationEnabled && <TrackAutomationLane tab={tab}
+                onChange={(automationPoints) => onTabChange(tab.id, { automationPoints })} />}
             </div>)}
             {automation?.visible && <AutomationEditor arrangement={arrangement} state={automation} onChange={onAutomationChange} />}
             {snapGuideMs !== null && <div className="snap-guide" style={{ left: `${snapGuideMs / arrangement.durationMs * 100}%` }}><span>{formatDuration(snapGuideMs, true)}</span></div>}
@@ -492,7 +532,7 @@ export default function App() {
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const assetsRef = useRef<MediaAsset[]>([]);
   assetsRef.current = allAssets;
-  const player = useTimelinePlayer(arrangement, allAssets, audioSettings, automation);
+  const player = useTimelinePlayer(arrangement, allAssets, audioSettings, automation, libraryTabs);
   const occurrences = useMemo(() => {
     const counts = new Map<string, number>();
     if (!arrangement) return counts;
@@ -591,6 +631,16 @@ export default function App() {
     if (clip.kind === 'voice') setAutomation(current => current ? removeAutomationAssignment(current, clip.id) : current);
   };
 
+  const changeClipFade = (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => {
+    if (kind === 'missing') return;
+    setArrangement(current => {
+      if (!current) return current;
+      const key = kind === 'music' ? 'music' : 'voice';
+      return { ...current, [key]: current[key].map(clip => clip.id === clipId
+        ? { ...clip, [edge === 'in' ? 'fadeInMs' : 'fadeOutMs']: Math.round(durationMs) } : clip) };
+    });
+  };
+
   const dropAsset = (assetId: string, kind: MediaKind, proposedStartMs: number) => {
     if (!arrangement) return;
     if (!editingPreferences.allowAssetReuse && (occurrences.get(assetId) ?? 0) > 0) return;
@@ -621,7 +671,7 @@ export default function App() {
     const id = `${kind}-${crypto.randomUUID()}`;
     const tab: LibraryTab = {
       id, kind, name: `${t(kind === 'music' ? 'music' : 'voices')} ${sameKind.length + 1}`,
-      color: tabColors[sameKind.length % tabColors.length], localAutomationEnabled: false
+      color: tabColors[sameKind.length % tabColors.length], localAutomationEnabled: false, automationPoints: []
     };
     setLibraryTabs(current => [...current, tab]);
     if (kind === 'music') setActiveMusicTabId(id); else setActiveVoiceTabId(id);
@@ -681,7 +731,13 @@ export default function App() {
               const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
             })} onSelectTab={setActiveMusicTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
-            onToggleLocalAutomation={(id) => updateLibraryTab(id, { localAutomationEnabled: !libraryTabs.find(tab => tab.id === id)?.localAutomationEnabled })}
+            onToggleLocalAutomation={(id) => {
+              const tab = libraryTabs.find(item => item.id === id);
+              updateLibraryTab(id, { localAutomationEnabled: !tab?.localAutomationEnabled,
+                automationPoints: tab?.automationPoints.length ? tab.automationPoints : [
+                  { id: crypto.randomUUID(), position: 0, value: 100 }, { id: crypto.randomUUID(), position: 1, value: 100 }
+                ] });
+            }}
             onInsertionChange={(patch) => setMusicInsertion(current => ({ ...current, ...patch }))} />
           <AssetList kind="voice" assets={voices} tabs={libraryTabs.filter(tab => tab.kind === 'voice')}
             activeTabId={activeVoiceTabId} insertion={voiceInsertion} activePreview={activePreview} occurrences={occurrences}
@@ -690,7 +746,13 @@ export default function App() {
               const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
             })} onSelectTab={setActiveVoiceTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
-            onToggleLocalAutomation={(id) => updateLibraryTab(id, { localAutomationEnabled: !libraryTabs.find(tab => tab.id === id)?.localAutomationEnabled })}
+            onToggleLocalAutomation={(id) => {
+              const tab = libraryTabs.find(item => item.id === id);
+              updateLibraryTab(id, { localAutomationEnabled: !tab?.localAutomationEnabled,
+                automationPoints: tab?.automationPoints.length ? tab.automationPoints : [
+                  { id: crypto.randomUUID(), position: 0, value: 100 }, { id: crypto.randomUUID(), position: 1, value: 100 }
+                ] });
+            }}
             onInsertionChange={(patch) => setVoiceInsertion(current => ({ ...current, ...patch }))} />
         </div>
         <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} editingPreferences={editingPreferences} mounted={Boolean(arrangement)}
@@ -704,11 +766,11 @@ export default function App() {
           onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
           onMount={mount} />
       </div>
-      <Timeline arrangement={arrangement} tabs={libraryTabs} isPlaying={player.isPlaying} positionMs={player.positionMs}
+      <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} automation={automation} editingPreferences={editingPreferences}
         highlightedAssetIds={highlightedAssetIds} onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
-        onMoveClip={moveClip} onRemoveClip={removeClip} onDropAsset={dropAsset}
+        onMoveClip={moveClip} onRemoveClip={removeClip} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
         onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
         onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>

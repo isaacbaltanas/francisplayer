@@ -180,9 +180,18 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .timeline-clip.dragging { cursor: grabbing; z-index: 10; opacity: .82; box-shadow: 0 7px 20px #000b, 0 0 0 1px #fff7; }
 .timeline-clip.clip-dimmed { opacity: .16; filter: grayscale(.8); }
 .timeline-clip.clip-highlighted { z-index: 7; filter: brightness(1.35) saturate(1.25); box-shadow: 0 0 0 2px #b4ffe9, 0 0 15px #71f6caaa; }
+.timeline-clip.clip-overlapping { opacity: .72; border-color: #ffd06f; box-shadow: inset 0 0 0 1px #ffd06f88, 0 0 9px #f3a43c55; }
 .timeline-clip::after { content: ''; position: absolute; inset: 0; background: linear-gradient(110deg, rgba(255,255,255,.08), transparent 45%); pointer-events: none; }
-.timeline-clip > span { display: block; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #0007; }
-.timeline-clip small { display: block; margin-top: 5px; font: 8px ui-monospace, monospace; opacity: .75; }
+.timeline-clip > span { position: relative; z-index: 3; display: block; font-size: 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 1px 2px #0007; pointer-events: none; }
+.timeline-clip small { position: relative; z-index: 3; display: block; margin-top: 5px; font: 8px ui-monospace, monospace; opacity: .75; pointer-events: none; }
+.clip-waveform, .clip-fades { position: absolute; z-index: 1; inset: 3px; width: calc(100% - 6px); height: calc(100% - 6px); pointer-events: none; overflow: hidden; }
+.clip-waveform line { stroke: rgba(255,255,255,.48); stroke-width: .58; vector-effect: non-scaling-stroke; }
+.clip-fades { z-index: 2; inset: 0; width: 100%; height: 100%; }
+.clip-fades path { fill: rgba(4,7,9,.48); stroke: rgba(255,255,255,.85); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.fade-handle { position: absolute; z-index: 5; top: -1px; width: 14px; height: 14px; padding: 0; border: 0; background: #e9f3f0; color: #18201e; font-size: 7px; opacity: 0; cursor: ew-resize; }
+.timeline-clip:hover .fade-handle, .fade-handle:active { opacity: .9; }
+.fade-handle.fade-in { left: -1px; border-radius: 4px 0 4px 0; }
+.fade-handle.fade-out { right: -1px; border-radius: 0 4px 0 4px; }
 .timeline-clip.missing { background: repeating-linear-gradient(135deg, #a13c46 0, #a13c46 7px, #7f3039 7px, #7f3039 14px) !important; display: grid; place-items: center; border-color: #d35963; }
 .timeline-clip.missing span { font-weight: 800; letter-spacing: .1em; }
 .timeline-clip.truncated { border-right: 3px solid #ffd082; }
@@ -193,6 +202,13 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .clip-menu button.danger { color: #ff929b; }
 .snap-guide { position: absolute; z-index: 15; top: 0; bottom: 0; width: 1px; background: #7cffe0; box-shadow: 0 0 7px #59ffd5; pointer-events: none; }
 .snap-guide span { position: absolute; top: 3px; left: 5px; padding: 2px 4px; border-radius: 3px; background: #17483d; color: #b9ffec; font: 7px ui-monospace, monospace; white-space: nowrap; }
+.overlap-warning { background: #4a3520; color: #ffd18a; }
+.track-automation-lane { position: absolute; z-index: 6; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.track-automation-line, .track-automation-hit { fill: none; vector-effect: non-scaling-stroke; }
+.track-automation-line { stroke: #73f5d1; stroke-width: 1.7; filter: drop-shadow(0 0 3px #73f5d199); }
+.track-automation-hit { stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: copy; }
+.track-automation-lane circle { fill: #b4ffeb; stroke: #14231f; stroke-width: 1.2; vector-effect: non-scaling-stroke; pointer-events: all; cursor: move; }
+.track-automation-lane text { fill: #d4fff3; font: 8px ui-monospace, monospace; text-anchor: middle; paint-order: stroke; stroke: #10201c; stroke-width: 3px; vector-effect: non-scaling-stroke; }
 .playhead { position: absolute; z-index: 8; top: 0; bottom: 0; width: 1px; background: #ffbd70; pointer-events: none; box-shadow: 0 0 7px #ffad4f88; }
 .playhead span { position: absolute; top: 0; left: -4px; width: 9px; height: 8px; background: #ffbd70; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 .automation-dot { background: #71f6ca; box-shadow: 0 0 6px #71f6ca; }

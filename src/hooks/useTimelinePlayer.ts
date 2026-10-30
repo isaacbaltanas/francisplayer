@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { dbToGain } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
-import type { Arrangement, AudioSettings, AutomationState, MediaAsset, TimelineClip } from '../types';
+import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
+import type { Arrangement, AudioSettings, AutomationState, LibraryTab, MediaAsset, TimelineClip } from '../types';
 
 interface PlayingElement {
   clipId: string;
   element: HTMLAudioElement;
 }
+
+const safeVolume = (value: number) => Math.max(0, Math.min(1, value));
 
 const contains = (clip: TimelineClip, positionMs: number) => (
   positionMs >= clip.startMs && positionMs < clip.startMs + clip.durationMs
@@ -15,7 +18,7 @@ const contains = (clip: TimelineClip, positionMs: number) => (
 const createPlayingElement = (asset: MediaAsset, clip: TimelineClip, positionMs: number, volume: number) => {
   const element = new Audio(asset.previewUrl);
   element.preload = 'auto';
-  element.volume = volume;
+  element.volume = safeVolume(volume);
   const start = () => {
     element.currentTime = Math.max(0, (positionMs - clip.startMs) / 1000);
     void element.play().catch(() => undefined);
@@ -29,7 +32,8 @@ export const useTimelinePlayer = (
   arrangement: Arrangement | null,
   assets: MediaAsset[],
   audioSettings: AudioSettings,
-  automation: AutomationState | null
+  automation: AutomationState | null,
+  tabs: LibraryTab[] = []
 ) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
@@ -37,12 +41,12 @@ export const useTimelinePlayer = (
   const positionRef = useRef(0);
   const basePositionRef = useRef(0);
   const startedAtRef = useRef(0);
-  const musicRef = useRef<PlayingElement | null>(null);
+  const musicRef = useRef<Map<string, PlayingElement>>(new Map());
   const voicesRef = useRef<Map<string, PlayingElement>>(new Map());
 
   const stopElements = useCallback(() => {
-    musicRef.current?.element.pause();
-    musicRef.current = null;
+    musicRef.current.forEach(item => item.element.pause());
+    musicRef.current.clear();
     voicesRef.current.forEach(item => item.element.pause());
     voicesRef.current.clear();
   }, []);
@@ -54,20 +58,21 @@ export const useTimelinePlayer = (
     const musicVolume = dbToGain(nextMusicGainDb);
     setMusicGainDb(current => Math.abs(current - nextMusicGainDb) > .05 ? nextMusicGainDb : current);
 
-    const musicClip = arrangement.music.find(clip => clip.kind === 'music' && contains(clip, nextPositionMs));
-    if (!musicClip || !musicClip.assetId) {
-      musicRef.current?.element.pause();
-      musicRef.current = null;
-    } else if (musicRef.current?.clipId !== musicClip.id) {
-      musicRef.current?.element.pause();
-      const asset = assetMap.get(musicClip.assetId);
-      if (asset) musicRef.current = {
-        clipId: musicClip.id,
-        element: createPlayingElement(asset, musicClip, nextPositionMs, musicVolume)
-      };
-    } else {
-      musicRef.current.element.volume = musicVolume;
-    }
+    const activeMusic = arrangement.music.filter(clip => clip.kind === 'music' && contains(clip, nextPositionMs));
+    const activeMusicIds = new Set(activeMusic.map(clip => clip.id));
+    musicRef.current.forEach((item, clipId) => {
+      if (!activeMusicIds.has(clipId)) { item.element.pause(); musicRef.current.delete(clipId); }
+    });
+    activeMusic.forEach(clip => {
+      if (!clip.assetId) return;
+      const volume = musicVolume * clipFadeGain(clip, nextPositionMs) * trackAutomationGain(clip, tabs, nextPositionMs, arrangement.durationMs);
+      const playing = musicRef.current.get(clip.id);
+      if (playing) playing.element.volume = safeVolume(volume);
+      else {
+        const asset = assetMap.get(clip.assetId);
+        if (asset) musicRef.current.set(clip.id, { clipId: clip.id, element: createPlayingElement(asset, clip, nextPositionMs, volume) });
+      }
+    });
 
     const activeVoices = arrangement.voice.filter(clip => contains(clip, nextPositionMs));
     const activeIds = new Set(activeVoices.map(clip => clip.id));
@@ -82,15 +87,18 @@ export const useTimelinePlayer = (
       const asset = assetMap.get(clip.assetId);
       if (asset) voicesRef.current.set(clip.id, {
         clipId: clip.id,
-        element: createPlayingElement(asset, clip, nextPositionMs, dbToGain(audioSettings.voiceGainDb))
+        element: createPlayingElement(asset, clip, nextPositionMs, dbToGain(audioSettings.voiceGainDb) * clipFadeGain(clip, nextPositionMs) * trackAutomationGain(clip, tabs, nextPositionMs, arrangement.durationMs))
       });
     });
-    voicesRef.current.forEach(item => { item.element.volume = dbToGain(audioSettings.voiceGainDb); });
-  }, [arrangement, assets, audioSettings, automation]);
+    voicesRef.current.forEach((item, clipId) => {
+      const clip = activeVoices.find(candidate => candidate.id === clipId);
+      if (clip) item.element.volume = safeVolume(dbToGain(audioSettings.voiceGainDb) * clipFadeGain(clip, nextPositionMs) * trackAutomationGain(clip, tabs, nextPositionMs, arrangement.durationMs));
+    });
+  }, [arrangement, assets, audioSettings, automation, tabs]);
 
   const pause = useCallback(() => {
     setIsPlaying(false);
-    musicRef.current?.element.pause();
+    musicRef.current.forEach(item => item.element.pause());
     voicesRef.current.forEach(item => item.element.pause());
   }, []);
 
