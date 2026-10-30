@@ -2,6 +2,21 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.7.0] - 2026-10-30
+
+### Añadido
+
+- Proyectos portátiles en un único contenedor ZIP con extensión `.francis`.
+- Carpetas humanas `Music/`, `Voice/` y `Configuration/`, con una subcarpeta por pestaña.
+- Manifiesto de proyecto, montaje, automatizaciones y ajustes en JSON legible.
+- Acciones Nuevo, Abrir, Guardar y Guardar como en la barra superior.
+- Atajos `Ctrl/⌘+O`, `Ctrl/⌘+S` y `Ctrl/⌘+Shift+S`.
+- Recuperación de archivos, pestañas, pistas, formas de onda, fades, automatizaciones y preferencias.
+- Manejo de proyectos abiertos por doble clic tanto mediante eventos de macOS como por argumento en Windows.
+- Declaración de asociación documental `.francis` en el paquete de macOS.
+- Validación de formato y protección frente a rutas inseguras dentro del contenedor.
+- Prueba automática de escritura, estructura interna y recuperación completa del archivo.
+
 ## [0.6.0] - 2026-10-30
 
 ### Añadido

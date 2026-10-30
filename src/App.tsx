@@ -47,6 +47,22 @@ const initialTabs: LibraryTab[] = [
 ];
 const defaultInsertion: InsertionConfig = { mode: 'all', customPattern: '1, 2, 1, 3' };
 
+interface ProjectDocument {
+  name: string;
+  version: string;
+  settings: ArrangementSettings;
+  audioSettings: AudioSettings;
+  editingPreferences: EditingPreferences;
+  libraryTabs: LibraryTab[];
+  activeMusicTabId: string;
+  activeVoiceTabId: string;
+  musicInsertion: InsertionConfig;
+  voiceInsertion: InsertionConfig;
+  arrangement: Arrangement | null;
+  automation: AutomationState | null;
+  assets: MediaAsset[];
+}
+
 function BrandMark() {
   return <div className="brand-mark" aria-hidden="true"><span /><span /><span /><span /><span /></div>;
 }
@@ -528,6 +544,8 @@ export default function App() {
   const [highlightedAssetIds, setHighlightedAssetIds] = useState<Set<string>>(new Set());
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [projectPath, setProjectPath] = useState<string | undefined>();
+  const [projectName, setProjectName] = useState('Proyecto sin título');
   const audio = useRef<HTMLAudioElement | null>(null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const assetsRef = useRef<MediaAsset[]>([]);
@@ -710,10 +728,74 @@ export default function App() {
     setArrangement(null); setAutomation(null);
   };
 
+  const projectDocument = (): ProjectDocument => ({
+    name: projectName, version: '0.7.0', settings, audioSettings, editingPreferences, libraryTabs,
+    activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets
+  });
+
+  const saveProject = async (saveAs = false) => {
+    if (!window.francisDesktop) return;
+    try {
+      const savedPath = await window.francisDesktop.saveProject(projectDocument(), saveAs ? undefined : projectPath);
+      if (savedPath) {
+        setProjectPath(savedPath);
+        const fileName = savedPath.split(/[\\/]/).pop()?.replace(/\.francis$/i, '');
+        if (fileName) setProjectName(fileName);
+      }
+    } catch {
+      setError(t('projectSaveError'));
+    }
+  };
+
+  const openProject = async (requestedPath?: string) => {
+    if (!window.francisDesktop) return;
+    try {
+      const opened = await window.francisDesktop.openProject(requestedPath);
+      if (!opened) return;
+      const project = opened.project as ProjectDocument;
+      player.stop(); audio.current?.pause();
+      assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
+      setMusic(project.assets.filter(asset => asset.kind === 'music'));
+      setVoices(project.assets.filter(asset => asset.kind === 'voice'));
+      setSettings(project.settings); setAudioSettings(project.audioSettings); setEditingPreferences(project.editingPreferences);
+      setLibraryTabs(project.libraryTabs); setActiveMusicTabId(project.activeMusicTabId); setActiveVoiceTabId(project.activeVoiceTabId);
+      setMusicInsertion(project.musicInsertion); setVoiceInsertion(project.voiceInsertion);
+      setArrangement(project.arrangement); setAutomation(project.automation);
+      setHighlightedAssetIds(new Set()); setProjectPath(opened.projectPath); setProjectName(project.name);
+    } catch {
+      setError(t('projectOpenError'));
+    }
+  };
+
+  const newProject = () => {
+    player.stop(); audio.current?.pause();
+    assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
+    setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
+    setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
+    setHighlightedAssetIds(new Set()); setProjectPath(undefined); setProjectName(t('untitledProject'));
+  };
+
+  useEffect(() => {
+    const removeListener = window.francisDesktop?.onOpenProject(path => { void openProject(path); });
+    const keyboard = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() === 's') { event.preventDefault(); void saveProject(event.shiftKey); }
+      if (event.key.toLowerCase() === 'o') { event.preventDefault(); void openProject(); }
+    };
+    window.addEventListener('keydown', keyboard);
+    return () => { removeListener?.(); window.removeEventListener('keydown', keyboard); };
+  });
+
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><BrandMark /><div><h1>Francis Player</h1><p>{t('appSubtitle')}</p></div></div>
-      <div className="project-state"><span className="draft-pill">{t('statusDraft')}</span><div><strong>{t('newProject')}</strong><small>{status}</small></div></div>
+      <div className="project-state"><span className="draft-pill">{projectPath ? t('statusSaved') : t('statusDraft')}</span><div><strong>{projectName}</strong><small>{status}</small></div></div>
+      <nav className="project-actions">
+        <button onClick={newProject} title={t('newProjectAction')}>＋</button>
+        <button onClick={() => void openProject()} title={`${t('openProject')} · Ctrl/⌘O`}>⌂</button>
+        <button onClick={() => void saveProject(false)} title={`${t('saveProject')} · Ctrl/⌘S`}>▣</button>
+        <button onClick={() => void saveProject(true)} title={t('saveProjectAs')}>▣＋</button>
+      </nav>
       <div className="language-switch" aria-label={t('language')}>
         <button className={i18n.language === 'es' ? 'active' : ''} onClick={() => void i18n.changeLanguage('es')}>{t('spanish')}</button>
         <button className={i18n.language === 'en' ? 'active' : ''} onClick={() => void i18n.changeLanguage('en')}>{t('english')}</button>

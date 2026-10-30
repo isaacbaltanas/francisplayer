@@ -47,7 +47,10 @@ const resources = {
     insertRandom: 'Completamente aleatorio', insertCustom: 'Patrón personalizado',
     fadeInHandle: 'Arrastra para crear el fade in', fadeOutHandle: 'Arrastra para crear el fade out',
     warningVoiceOverlap_one: '{{count}} locución está solapada. Puede dificultar la comprensión del mensaje.',
-    warningVoiceOverlap_other: '{{count}} locuciones están solapadas. Pueden dificultar la comprensión del mensaje.'
+    warningVoiceOverlap_other: '{{count}} locuciones están solapadas. Pueden dificultar la comprensión del mensaje.',
+    untitledProject: 'Proyecto sin título', statusSaved: 'GUARDADO', newProjectAction: 'Nuevo proyecto', openProject: 'Abrir proyecto',
+    saveProject: 'Guardar proyecto', saveProjectAs: 'Guardar proyecto como…',
+    projectSaveError: 'No se pudo guardar el proyecto .francis.', projectOpenError: 'No se pudo abrir este proyecto .francis.'
   } },
   en: { translation: {
     appSubtitle: 'Automatic arrangement studio',
@@ -94,7 +97,10 @@ const resources = {
     insertRandom: 'Completely random', insertCustom: 'Custom pattern',
     fadeInHandle: 'Drag to create the fade in', fadeOutHandle: 'Drag to create the fade out',
     warningVoiceOverlap_one: '{{count}} voice clip overlaps. This may make the message difficult to understand.',
-    warningVoiceOverlap_other: '{{count}} voice clips overlap. This may make the message difficult to understand.'
+    warningVoiceOverlap_other: '{{count}} voice clips overlap. This may make the message difficult to understand.',
+    untitledProject: 'Untitled project', statusSaved: 'SAVED', newProjectAction: 'New project', openProject: 'Open project',
+    saveProject: 'Save project', saveProjectAs: 'Save project as…',
+    projectSaveError: 'The .francis project could not be saved.', projectOpenError: 'This .francis project could not be opened.'
   } }
 };
 

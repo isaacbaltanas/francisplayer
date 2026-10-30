@@ -82,4 +82,11 @@ Toda mejora debe actualizar la versión de `package.json` y añadir una entrada 
 - Transparencia y aviso de locuciones solapadas.
 - Automatización local con puntos e interpolación por cada pista.
 
+## Versión 0.7
+
+- Guardar y abrir proyectos portátiles `.francis`, también por doble clic.
+- Contenedor único con audio organizado en `Music/` y `Voice/` por pestañas.
+- Configuración, montaje y automatizaciones en JSON legible dentro de `Configuration/`.
+- Recuperación completa en otro equipo sin referencias a los archivos originales.
+
 Consulta [el roadmap](docs/ROADMAP.md) para las siguientes versiones.

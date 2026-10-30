@@ -1,6 +1,6 @@
 {
   "name": "francis-player",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "description": "Automatic music and voice arrangement studio",
   "main": "dist-electron/main.js",
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
+    "adm-zip": "^0.6.1",
     "i18next": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -22,6 +23,7 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "latest",
+    "@types/adm-zip": "^0.5.8",
     "@types/node": "latest",
     "@types/react": "latest",
     "@types/react-dom": "latest",
