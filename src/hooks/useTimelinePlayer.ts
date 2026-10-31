@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
+import { configureRealtimeAudioGraph, createRealtimeAudioGraph, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
 import type { Arrangement, AudioSettings, AutomationState, LibraryTab, LoudnessMeterReading, MediaAsset, TimelineClip } from '../types';
 
 interface PlayingElement {
@@ -13,66 +14,13 @@ interface PlayingElement {
   cancel: () => void;
 }
 
-interface AudioGraph {
-  context: AudioContext;
-  input: GainNode;
-  output: GainNode;
-  dry: GainNode;
-  echoTaps: Array<{ delay: DelayNode; gain: GainNode }>;
-  reverbTaps: Array<{ delay: DelayNode; gain: GainNode }>;
-  meter: AudioWorkletNode | GainNode;
-  meterSink: GainNode;
-}
-
 const contains = (clip: TimelineClip, positionMs: number) => positionMs >= clip.startMs && positionMs < clip.startMs + clip.durationMs;
 const safeGain = (value: number) => Math.max(0, Math.min(8, value));
 const normalizationGain = (asset: MediaAsset | undefined, settings: AudioSettings) => (
   settings.normalizeClips && asset?.analysis ? dbToLinear(normalizationAdjustmentDb(asset.analysis, settings)) : 1
 );
 
-const configureGraph = (graph: AudioGraph, settings: AudioSettings) => {
-  graph.dry.gain.value = 1;
-  const delay = Math.max(1, settings.echoDelayMs ?? 260) / 1000;
-  const feedback = Math.max(0, Math.min(.9, (settings.echoFeedback ?? 30) / 100));
-  const echoMix = settings.echoEnabled ? Math.max(0, Math.min(1, (settings.echoMix ?? 15) / 100)) : 0;
-  graph.echoTaps.forEach((tap, index) => {
-    tap.delay.delayTime.value = delay * (index + 1);
-    tap.gain.gain.value = echoMix * feedback ** index;
-  });
-  const reverbMix = settings.reverbEnabled ? Math.max(0, Math.min(1, (settings.reverbMix ?? 15) / 100)) : 0;
-  const reverbDuration = Math.max(.1, Math.min(10, settings.reverbDuration ?? 1.8));
-  const reverbDecay = Math.max(.1, settings.reverbDecay ?? 2.4);
-  const ratios = [0.025, 0.037, 0.053, 0.079, 0.113, 0.167, 0.239, 0.337, 0.463, 0.617, 0.79, 1];
-  graph.reverbTaps.forEach((tap, index) => {
-    tap.delay.delayTime.value = reverbDuration * ratios[index];
-    tap.gain.gain.value = reverbMix * .35 * Math.exp(-reverbDecay * ratios[index]);
-  });
-};
-
-const createGraph = async (onMeter: (reading: LoudnessMeterReading) => void): Promise<AudioGraph> => {
-  const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
-  const input = context.createGain();
-  const output = context.createGain();
-  const dry = context.createGain();
-  const echoTaps = Array.from({ length: 8 }, () => ({ delay: context.createDelay(30), gain: context.createGain() }));
-  const reverbTaps = Array.from({ length: 12 }, () => ({ delay: context.createDelay(12), gain: context.createGain() }));
-  const meterSink = context.createGain();
-  meterSink.gain.value = 0;
-  let meter: AudioWorkletNode | GainNode;
-  try {
-    await context.audioWorklet.addModule('./loudness-worklet.js');
-    meter = new AudioWorkletNode(context, 'francis-loudness', { channelCount: 2, channelCountMode: 'max', outputChannelCount: [2] });
-    meter.port.onmessage = event => onMeter(event.data as LoudnessMeterReading);
-  } catch { meter = context.createGain(); }
-  input.connect(dry).connect(output);
-  echoTaps.forEach(tap => input.connect(tap.delay).connect(tap.gain).connect(output));
-  reverbTaps.forEach(tap => input.connect(tap.delay).connect(tap.gain).connect(output));
-  output.connect(context.destination);
-  output.connect(meter).connect(meterSink).connect(context.destination);
-  return { context, input, output, dry, echoTaps, reverbTaps, meter, meterSink };
-};
-
-const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: TimelineClip, positionMs: number, gainValue: number) => {
+const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip: TimelineClip, positionMs: number, gainValue: number) => {
   const element = new Audio();
   element.crossOrigin = 'anonymous';
   element.src = asset.previewUrl;
@@ -123,19 +71,19 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const [musicGainDb, setMusicGainDb] = useState(audioSettings.musicGainDb);
   const [meter, setMeter] = useState<LoudnessMeterReading>({ momentary: -120, shortTerm: -120, integrated: -120, peakDbfs: -120 });
   const positionRef = useRef(0); const basePositionRef = useRef(0); const startedAtRef = useRef(0);
-  const graphRef = useRef<AudioGraph | null>(null);
+  const graphRef = useRef<RealtimeAudioGraph | null>(null);
   const musicRef = useRef<Map<string, PlayingElement>>(new Map());
   const voicesRef = useRef<Map<string, PlayingElement>>(new Map());
   const playbackGenerationRef = useRef(0);
 
   const ensureGraph = useCallback(async () => {
-    if (!graphRef.current) { graphRef.current = await createGraph(setMeter); configureGraph(graphRef.current, audioSettings); }
+    if (!graphRef.current) { graphRef.current = await createRealtimeAudioGraph(setMeter); configureRealtimeAudioGraph(graphRef.current, audioSettings); }
     const graph = graphRef.current;
     await graph.context.resume();
     return graph;
   }, [audioSettings]);
 
-  useEffect(() => { if (graphRef.current) configureGraph(graphRef.current, audioSettings); }, [audioSettings]);
+  useEffect(() => { if (graphRef.current) configureRealtimeAudioGraph(graphRef.current, audioSettings); }, [audioSettings]);
 
   const dispose = (item: PlayingElement) => item.cancel();
   const stopElements = useCallback(() => {

@@ -15,7 +15,8 @@ import { MixDuckingGraph } from './components/MixDuckingGraph';
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
-import { normalizationAdjustmentDb } from './lib/audio';
+import { dbToLinear, normalizationAdjustmentDb } from './lib/audio';
+import { configureRealtimeAudioGraph, createRealtimeAudioGraph, type RealtimeAudioGraph } from './lib/realtimeAudioGraph';
 import { anchoredScrollLeft, fitTimelineZoom, zoomFromPinch } from './lib/timelineZoom';
 import appIconUrl from '../assets/icon.svg';
 import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
@@ -316,10 +317,15 @@ interface SettingsPanelProps {
   onRestoreVoiceTrims: () => void;
   collapsed: boolean;
   onToggleCollapsed: () => void;
+  previewEffectsEnabled: boolean;
+  previewMode: 'dry' | 'processed';
+  onPreviewEffectsEnabledChange: (enabled: boolean) => void;
+  onPreviewModeChange: (mode: 'dry' | 'processed') => void;
 }
 
 function SettingsPanel({ settings, audioSettings, automation, editingPreferences, voiceAssets, onChange, onAudioChange, onAutomationChange,
-  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims, collapsed, onToggleCollapsed }: SettingsPanelProps) {
+  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims, collapsed, onToggleCollapsed,
+  previewEffectsEnabled, previewMode, onPreviewEffectsEnabledChange, onPreviewModeChange }: SettingsPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
@@ -433,6 +439,16 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         onChange={(fadeUpOverlapMs) => onAudioChange({ fadeUpOverlapMs: Math.min(fadeUpOverlapMs, audioSettings.fadeUpMs) })} />
     </div> : <MixDuckingGraph settings={audioSettings} onChange={onAudioChange} />}
     <div className="audio-processing-heading"><h3>{t('audioProcessing')}</h3></div>
+    <div className="effect-preview-panel">
+      <Toggle label={t('previewEffects')} help={t('previewEffectsHelp')} checked={previewEffectsEnabled}
+        onChange={onPreviewEffectsEnabledChange} />
+      <div className={previewEffectsEnabled ? '' : 'preview-mode-disabled'}>
+        <Segmented label={t('previewComparison')} help={t('previewComparisonHelp')} value={previewMode} options={[
+          ['dry', t('drySignal')], ['processed', t('processedSignal')]
+        ]} onChange={(value) => onPreviewModeChange(value as 'dry' | 'processed')} />
+      </div>
+      <p>{t('previewEffectsInstruction')}</p>
+    </div>
     <div className="audio-settings-grid audio-processing-grid">
       <Toggle label={t('normalizeClips')} help={t('normalizeClipsHelp')} checked={audioSettings.normalizeClips ?? false}
         onChange={(normalizeClips) => onAudioChange({ normalizeClips })} />
@@ -959,11 +975,21 @@ export default function App() {
   const [isDirty, setIsDirty] = useState(false);
   const [trimmingVoices, setTrimmingVoices] = useState(false);
   const [settingsCollapsed, setSettingsCollapsed] = useState(() => localStorage.getItem('francis-settings-collapsed') === 'true');
+  const [previewEffectsEnabled, setPreviewEffectsEnabled] = useState(() => localStorage.getItem('francis-preview-effects') === 'true');
+  const [previewMode, setPreviewMode] = useState<'dry' | 'processed'>(() => localStorage.getItem('francis-preview-mode') === 'processed' ? 'processed' : 'dry');
   const [, setHistoryRevision] = useState(0);
   const [importProgressJobs, setImportProgressJobs] = useState<Array<{
     id: string; kind?: MediaKind; label: string; completed: number; total: number;
   }>>([]);
   const audio = useRef<HTMLAudioElement | null>(null);
+  const previewGraphRef = useRef<RealtimeAudioGraph | null>(null);
+  const previewNodesRef = useRef<{
+    source: MediaElementAudioSourceNode;
+    gain: GainNode;
+    dryRoute: GainNode;
+    processedRoute: GainNode;
+    asset: MediaAsset;
+  } | null>(null);
   const previewGeneration = useRef(0);
   const activePreviewRef = useRef<string | null>(null);
   const waveformHydrationGeneration = useRef(0);
@@ -997,12 +1023,34 @@ export default function App() {
     previewGeneration.current += 1;
     audio.current?.pause();
     audio.current?.removeAttribute('src');
+    previewNodesRef.current?.source.disconnect();
+    previewNodesRef.current?.gain.disconnect();
+    previewNodesRef.current?.dryRoute.disconnect();
+    previewNodesRef.current?.processedRoute.disconnect();
+    void previewGraphRef.current?.context.close();
     assetsRef.current.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
   }, []); // URLs are intentionally cleaned only when the app closes.
 
   useEffect(() => {
     localStorage.setItem('francis-settings-collapsed', String(settingsCollapsed));
   }, [settingsCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem('francis-preview-effects', String(previewEffectsEnabled));
+    localStorage.setItem('francis-preview-mode', previewMode);
+    const graph = previewGraphRef.current;
+    if (graph) configureRealtimeAudioGraph(graph, audioSettings);
+    const nodes = previewNodesRef.current;
+    if (!nodes || !graph) return;
+    const processed = previewEffectsEnabled && previewMode === 'processed';
+    const levelDb = nodes.asset.kind === 'music' ? audioSettings.musicGainDb : audioSettings.voiceGainDb;
+    const normalization = audioSettings.normalizeClips && nodes.asset.analysis
+      ? dbToLinear(normalizationAdjustmentDb(nodes.asset.analysis, audioSettings)) : 1;
+    const now = graph.context.currentTime;
+    nodes.gain.gain.setTargetAtTime(dbToLinear(levelDb) * normalization, now, .012);
+    nodes.dryRoute.gain.setTargetAtTime(processed ? 0 : 1, now, .008);
+    nodes.processedRoute.gain.setTargetAtTime(processed ? 1 : 0, now, .008);
+  }, [audioSettings, previewEffectsEnabled, previewMode]);
 
   useEffect(() => window.francisDesktop?.onImportProgress(progress => {
     const id = progress.jobId ?? 'background-analysis';
@@ -1122,15 +1170,27 @@ export default function App() {
     setAutomation(null);
   };
 
-  const stopPreview = () => {
-    previewGeneration.current += 1;
+  const clearPreviewPlayback = () => {
     const current = audio.current;
     if (current) {
       current.pause();
       current.removeAttribute('src');
       current.load();
     }
+    const nodes = previewNodesRef.current;
+    if (nodes) {
+      nodes.source.disconnect();
+      nodes.gain.disconnect();
+      nodes.dryRoute.disconnect();
+      nodes.processedRoute.disconnect();
+    }
+    previewNodesRef.current = null;
     audio.current = null;
+  };
+
+  const stopPreview = () => {
+    previewGeneration.current += 1;
+    clearPreviewPlayback();
     activePreviewRef.current = null;
     setActivePreview(null);
   };
@@ -1168,10 +1228,11 @@ export default function App() {
     const playUrl = async (url: string) => {
       if (generation !== previewGeneration.current) return false;
       const next = new Audio(url);
+      next.crossOrigin = 'anonymous';
       next.preload = 'auto';
       next.onended = () => {
         if (generation !== previewGeneration.current) return;
-        audio.current = null;
+        clearPreviewPlayback();
         activePreviewRef.current = null;
         setActivePreview(null);
       };
@@ -1185,6 +1246,25 @@ export default function App() {
         next.addEventListener('error', () => reject(new Error('Metadata unavailable')), { once: true });
       });
       next.currentTime = (asset.trimStartMs ?? 0) / 1000;
+      if (!previewGraphRef.current) previewGraphRef.current = await createRealtimeAudioGraph();
+      const graph = previewGraphRef.current;
+      configureRealtimeAudioGraph(graph, audioSettings);
+      await graph.context.resume();
+      const source = graph.context.createMediaElementSource(next);
+      const gain = graph.context.createGain();
+      const dryRoute = graph.context.createGain();
+      const processedRoute = graph.context.createGain();
+      const levelDb = asset.kind === 'music' ? audioSettings.musicGainDb : audioSettings.voiceGainDb;
+      const normalization = audioSettings.normalizeClips && asset.analysis
+        ? dbToLinear(normalizationAdjustmentDb(asset.analysis, audioSettings)) : 1;
+      const processed = previewEffectsEnabled && previewMode === 'processed';
+      gain.gain.value = dbToLinear(levelDb) * normalization;
+      dryRoute.gain.value = processed ? 0 : 1;
+      processedRoute.gain.value = processed ? 1 : 0;
+      source.connect(gain);
+      gain.connect(dryRoute).connect(graph.output);
+      gain.connect(processedRoute).connect(graph.input);
+      previewNodesRef.current = { source, gain, dryRoute, processedRoute, asset };
       await next.play();
       if (generation !== previewGeneration.current) {
         next.pause(); next.removeAttribute('src'); next.load();
@@ -1198,8 +1278,7 @@ export default function App() {
       try {
         if (generation !== previewGeneration.current) return;
         if (!asset.previewUrl.startsWith('francis-media:')) throw new Error('No desktop proxy available');
-        const failed = audio.current;
-        failed?.pause(); failed?.removeAttribute('src'); failed?.load();
+        clearPreviewPlayback();
         await playUrl(`${asset.previewUrl}&proxy=1`);
       } catch {
         if (generation !== previewGeneration.current) return;
@@ -1454,7 +1533,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.28.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.29.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1747,7 +1826,14 @@ export default function App() {
           onTrimVoices={() => void trimAllVoices()}
           onRestoreVoiceTrims={restoreVoiceTrims}
           collapsed={settingsCollapsed}
-          onToggleCollapsed={() => setSettingsCollapsed(current => !current)} />
+          onToggleCollapsed={() => setSettingsCollapsed(current => !current)}
+          previewEffectsEnabled={previewEffectsEnabled}
+          previewMode={previewMode}
+          onPreviewEffectsEnabledChange={(enabled) => {
+            setPreviewEffectsEnabled(enabled);
+            if (enabled) setPreviewMode('processed');
+          }}
+          onPreviewModeChange={setPreviewMode} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
