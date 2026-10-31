@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
+import { clipsInLookahead } from '../lib/playbackScheduling';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, smoothAudioGain, startAudioGain, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
 import type { Arrangement, AudioSettings, AutomationState, LibraryTab, LoudnessMeterReading, MediaAsset, TimelineClip } from '../types';
 
@@ -14,6 +15,22 @@ interface PlayingElement {
   ready: Promise<void>;
   cancel: () => void;
 }
+
+interface PlayingBuffer {
+  clipId: string;
+  source: AudioBufferSourceNode;
+  gain: GainNode;
+  targetGain: number;
+  cancel: () => void;
+}
+
+interface CachedVoiceBuffer {
+  buffer: AudioBuffer;
+  lastUsed: number;
+}
+
+const VOICE_LOOKAHEAD_MS = 15_000;
+const VOICE_BUFFER_CACHE_LIMIT = 64;
 
 const contains = (clip: TimelineClip, positionMs: number) => positionMs >= clip.startMs && positionMs < clip.startMs + clip.durationMs;
 const safeGain = (value: number) => Math.max(0, Math.min(8, value));
@@ -67,6 +84,40 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
   return { clipId: clip.id, element, source, gain, targetGain, ready, cancel };
 };
 
+const createPlayingBuffer = (
+  graph: RealtimeAudioGraph,
+  buffer: AudioBuffer,
+  clip: TimelineClip,
+  positionMs: number,
+  gainValue: number
+): PlayingBuffer | null => {
+  const offsetMs = (clip.sourceOffsetMs ?? 0) + Math.max(0, positionMs - clip.startMs);
+  const remainingMs = Math.min(
+    clip.startMs + clip.durationMs - Math.max(positionMs, clip.startMs),
+    buffer.duration * 1000 - offsetMs
+  );
+  if (remainingMs <= 0) return null;
+  const source = graph.context.createBufferSource();
+  source.buffer = buffer;
+  const gain = graph.context.createGain();
+  const targetGain = safeGain(gainValue);
+  source.connect(gain).connect(graph.input);
+  const when = graph.context.currentTime + Math.max(0, clip.startMs - positionMs) / 1000;
+  gain.gain.setValueAtTime(0, when);
+  gain.gain.linearRampToValueAtTime(targetGain, when + .008);
+  source.start(when, Math.max(0, offsetMs) / 1000, remainingMs / 1000);
+  let cancelled = false;
+  return {
+    clipId: clip.id, source, gain, targetGain,
+    cancel: () => {
+      if (cancelled) return;
+      cancelled = true;
+      try { source.stop(); } catch { /* Already stopped. */ }
+      source.disconnect(); gain.disconnect();
+    }
+  };
+};
+
 export const useTimelinePlayer = (arrangement: Arrangement | null, assets: MediaAsset[], audioSettings: AudioSettings,
   automation: AutomationState | null, tabs: LibraryTab[] = []) => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -77,7 +128,9 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const positionRef = useRef(0); const basePositionRef = useRef(0); const startedAtRef = useRef(0);
   const graphRef = useRef<RealtimeAudioGraph | null>(null);
   const musicRef = useRef<Map<string, PlayingElement>>(new Map());
-  const voicesRef = useRef<Map<string, PlayingElement>>(new Map());
+  const voicesRef = useRef<Map<string, PlayingBuffer>>(new Map());
+  const voiceBuffersRef = useRef<Map<string, CachedVoiceBuffer>>(new Map());
+  const voiceBufferPromisesRef = useRef<Map<string, Promise<AudioBuffer | null>>>(new Map());
   const playbackGenerationRef = useRef(0);
 
   const ensureGraph = useCallback(async () => {
@@ -89,7 +142,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
 
   useEffect(() => { if (graphRef.current) configureRealtimeAudioGraph(graphRef.current, audioSettings); }, [audioSettings]);
 
-  const dispose = (item: PlayingElement) => item.cancel();
+  const dispose = (item: PlayingElement | PlayingBuffer) => item.cancel();
   const stopElements = useCallback(() => {
     musicRef.current.forEach(dispose); musicRef.current.clear(); voicesRef.current.forEach(dispose); voicesRef.current.clear();
   }, []);
@@ -97,11 +150,50 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const mediaClockPosition = useCallback(() => {
     if (!arrangement) return null;
     const clips = new Map([...arrangement.music, ...arrangement.voice].map(clip => [clip.id, clip]));
-    const current = [...musicRef.current.values(), ...voicesRef.current.values()]
+    const current = [...musicRef.current.values()]
       .find(item => !item.element.paused && item.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
     const clip = current ? clips.get(current.clipId) : undefined;
     return current && clip ? clip.startMs + current.element.currentTime * 1000 - (clip.sourceOffsetMs ?? 0) : null;
   }, [arrangement]);
+
+  const decodeVoiceBuffer = useCallback(async (graph: RealtimeAudioGraph, asset: MediaAsset) => {
+    const cached = voiceBuffersRef.current.get(asset.id);
+    if (cached) { cached.lastUsed = performance.now(); return cached.buffer; }
+    const pending = voiceBufferPromisesRef.current.get(asset.id);
+    if (pending) return pending;
+    const promise = (async () => {
+      try {
+        const response = await fetch(asset.previewUrl);
+        if (!response.ok) return null;
+        const buffer = await graph.context.decodeAudioData(await response.arrayBuffer());
+        voiceBuffersRef.current.set(asset.id, { buffer, lastUsed: performance.now() });
+        if (voiceBuffersRef.current.size > VOICE_BUFFER_CACHE_LIMIT) {
+          const protectedIds = new Set([...voicesRef.current.keys()].map(clipId =>
+            arrangement?.voice.find(clip => clip.id === clipId)?.assetId).filter(Boolean));
+          const removable = [...voiceBuffersRef.current.entries()]
+            .filter(([id]) => !protectedIds.has(id))
+            .sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+          while (voiceBuffersRef.current.size > VOICE_BUFFER_CACHE_LIMIT && removable.length) {
+            voiceBuffersRef.current.delete(removable.shift()![0]);
+          }
+        }
+        return buffer;
+      } catch { return null; }
+      finally { voiceBufferPromisesRef.current.delete(asset.id); }
+    })();
+    voiceBufferPromisesRef.current.set(asset.id, promise);
+    return promise;
+  }, [arrangement]);
+
+  const preloadVoices = useCallback(async (positionMs: number, graph: RealtimeAudioGraph) => {
+    if (!arrangement) return;
+    const assetMap = new Map(assets.map(asset => [asset.id, asset]));
+    const upcoming = clipsInLookahead(arrangement.voice, positionMs, VOICE_LOOKAHEAD_MS);
+    await Promise.all(upcoming.map(clip => {
+      const asset = assetMap.get(clip.assetId!);
+      return asset ? decodeVoiceBuffer(graph, asset) : null;
+    }));
+  }, [arrangement, assets, decodeVoiceBuffer]);
 
   const syncElements = useCallback(async (nextPositionMs: number, generation = playbackGenerationRef.current) => {
     if (!arrangement) return;
@@ -135,9 +227,50 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
       });
     };
     sync(arrangement.music.filter(clip => clip.kind === 'music'), musicRef.current, () => musicVolume);
-    sync(arrangement.voice, voicesRef.current, () => dbToLinear(audioSettings.voiceGainDb));
     await Promise.all(pending);
-  }, [arrangement, assets, audioSettings, automation, ensureGraph, tabs]);
+    const voicePositionMs = mediaClockPosition() ?? nextPositionMs;
+    positionRef.current = voicePositionMs;
+    const upcomingVoices = clipsInLookahead(arrangement.voice, voicePositionMs, VOICE_LOOKAHEAD_MS);
+    const upcomingIds = new Set(upcomingVoices.map(clip => clip.id));
+    voicesRef.current.forEach((item, id) => {
+      if (!upcomingIds.has(id)) { dispose(item); voicesRef.current.delete(id); }
+    });
+    upcomingVoices.forEach(clip => {
+      const asset = assetMap.get(clip.assetId!); if (!asset) return;
+      const samplePosition = Math.max(voicePositionMs, clip.startMs);
+      const gainValue = dbToLinear(audioSettings.voiceGainDb) * normalizationGain(asset, audioSettings)
+        * clipFadeGain(clip, samplePosition)
+        * trackAutomationGain(clip, tabs, samplePosition, arrangement.durationMs);
+      const current = voicesRef.current.get(clip.id);
+      if (current) {
+        if (voicePositionMs >= clip.startMs) {
+          const targetGain = safeGain(gainValue);
+          if (Math.abs(current.targetGain - targetGain) > .0001) {
+            current.targetGain = targetGain;
+            smoothAudioGain(current.gain.gain, targetGain, graph.context);
+          }
+        }
+        return;
+      }
+      const buffer = voiceBuffersRef.current.get(asset.id)?.buffer;
+      if (buffer) {
+        voiceBuffersRef.current.get(asset.id)!.lastUsed = performance.now();
+        const created = createPlayingBuffer(graph, buffer, clip, voicePositionMs, gainValue);
+        if (created) voicesRef.current.set(clip.id, created);
+        return;
+      }
+      void decodeVoiceBuffer(graph, asset).then(decoded => {
+        if (!decoded || generation !== playbackGenerationRef.current || voicesRef.current.has(clip.id)) return;
+        const currentPosition = positionRef.current;
+        if (currentPosition >= clip.startMs + clip.durationMs || clip.startMs > currentPosition + VOICE_LOOKAHEAD_MS) return;
+        const currentGain = dbToLinear(audioSettings.voiceGainDb) * normalizationGain(asset, audioSettings)
+          * clipFadeGain(clip, Math.max(currentPosition, clip.startMs))
+          * trackAutomationGain(clip, tabs, Math.max(currentPosition, clip.startMs), arrangement.durationMs);
+        const created = createPlayingBuffer(graph, decoded, clip, currentPosition, currentGain);
+        if (created) voicesRef.current.set(clip.id, created);
+      });
+    });
+  }, [arrangement, assets, audioSettings, automation, decodeVoiceBuffer, ensureGraph, mediaClockPosition, tabs]);
 
   const holdPosition = useCallback(() => {
     const currentPosition = mediaClockPosition() ?? positionRef.current;
@@ -172,20 +305,27 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     void (async () => {
       try { await window.francisDesktop?.preparePreviews([...new Set(assets.map(asset => asset.path))]); } catch { /* Protocol fallback remains available. */ }
       if (generation !== playbackGenerationRef.current) return;
+      const graph = await ensureGraph();
+      await preloadVoices(positionRef.current, graph);
+      if (generation !== playbackGenerationRef.current) return;
       await syncElements(positionRef.current, generation);
       if (generation !== playbackGenerationRef.current) return;
       basePositionRef.current = positionRef.current; startedAtRef.current = performance.now();
       setIsPreparing(false); setIsPlaying(true);
     })();
-  }, [arrangement, assets, stopElements, syncElements]);
+  }, [arrangement, assets, ensureGraph, preloadVoices, stopElements, syncElements]);
   const seek = useCallback((nextPositionMs: number) => {
     if (!arrangement) return;
     playbackGenerationRef.current += 1;
     const generation = playbackGenerationRef.current;
     const clamped = Math.min(arrangement.durationMs, Math.max(0, nextPositionMs));
     positionRef.current = clamped; basePositionRef.current = clamped; startedAtRef.current = performance.now(); setPositionMs(clamped); stopElements();
-    if (isPlaying && clamped < arrangement.durationMs) void syncElements(clamped, generation);
-  }, [arrangement, isPlaying, stopElements, syncElements]);
+    if (isPlaying && clamped < arrangement.durationMs) void (async () => {
+      const graph = await ensureGraph();
+      await preloadVoices(clamped, graph);
+      if (generation === playbackGenerationRef.current) await syncElements(clamped, generation);
+    })();
+  }, [arrangement, ensureGraph, isPlaying, preloadVoices, stopElements, syncElements]);
 
   useEffect(() => {
     if (!isPlaying || !arrangement) return;
@@ -208,7 +348,10 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     const clamped = Math.min(positionRef.current, arrangement.durationMs);
     positionRef.current = clamped; basePositionRef.current = clamped; setPositionMs(clamped);
   }, [arrangement]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => { stopElements(); void graphRef.current?.context.close(); }, [stopElements]);
+  useEffect(() => () => {
+    stopElements(); voiceBuffersRef.current.clear(); voiceBufferPromisesRef.current.clear();
+    void graphRef.current?.context.close();
+  }, [stopElements]);
 
   return { isPlaying, isPreparing, positionMs, musicGainDb, meter, play, pause, stop, reset, seek };
 };
