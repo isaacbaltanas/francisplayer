@@ -10,7 +10,7 @@ import { generateWaveforms, scanImportPaths } from './importAudio.js';
 import { registerMediaProtocol } from './mediaProtocol.js';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'francis-media', privileges: {
-  standard: true, secure: true, supportFetchAPI: true, stream: true
+  standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true
 } }]);
 
 let mainWindow: BrowserWindow | null = null;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createArrangement, intervalForVoiceDuration, preserveManualVoicePositions, shuffleWithSeed, voiceScheduleDuration } from '../src/lib/arrangement';
+import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, shuffleWithSeed, voiceScheduleDuration } from '../src/lib/arrangement';
 import { calculateDuckingDb, dbToGain } from '../src/lib/audio';
 import {
   calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
@@ -74,6 +74,14 @@ const settings: ArrangementSettings = {
 };
 
 describe('arrangement engine', () => {
+  it('extends the target so Add all never drops the final songs', () => {
+    const songs = [asset('one', 'music', 74 * 60_000), asset('perales', 'music', 4 * 60_000), asset('raphael', 'music', 3 * 60_000)];
+    const duration = durationToIncludeAllMusic(songs, 74 * 60_000);
+    const arrangement = createArrangement(songs, [], { ...settings, targetDurationMs: duration, musicFillMode: 'silence' });
+    expect(duration).toBe(81 * 60_000);
+    expect(arrangement.music.filter(clip => clip.kind === 'music').map(clip => clip.assetId)).toEqual(['one', 'perales', 'raphael']);
+  });
+
   it('creates an explicit missing region when music is insufficient', () => {
     const result = createArrangement([asset('song', 'music', 60_000)], [], settings);
     expect(result.music).toHaveLength(2);

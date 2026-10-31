@@ -21,6 +21,10 @@ export const shuffleWithSeed = <T,>(items: T[], seed: number) => {
   return result;
 };
 
+export const durationToIncludeAllMusic = (assets: MediaAsset[], currentDurationMs: number) => (
+  Math.max(currentDurationMs, assets.reduce((sum, asset) => sum + Math.max(0, asset.durationMs), 0))
+);
+
 export const rebuildMissingMusic = (clips: TimelineClip[], durationMs: number): TimelineClip[] => {
   const content = clips.filter(clip => clip.kind === 'music').sort((a, b) => a.startMs - b.startMs);
   const missing: TimelineClip[] = [];

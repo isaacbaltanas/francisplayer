@@ -83,11 +83,12 @@ const inspectAudio = (binary: string, filePath: string, verifyIntegrity: boolean
   });
 });
 
-export const waveformFromPcm = (pcm: Buffer, bins = 256) => {
+export const waveformFromPcm = (pcm: Buffer, bins = 2048) => {
   const sampleCount = Math.floor(pcm.length / 4);
   if (!sampleCount) return [];
-  const binSize = Math.max(1, Math.ceil(sampleCount / bins));
-  return Array.from({ length: bins }, (_, bin) => {
+  const binCount = Math.min(bins, sampleCount);
+  const binSize = Math.max(1, Math.ceil(sampleCount / binCount));
+  return Array.from({ length: binCount }, (_, bin) => {
     let peak = 0;
     const end = Math.min(sampleCount, (bin + 1) * binSize);
     for (let sample = bin * binSize; sample < end; sample += 1) {

@@ -26,7 +26,7 @@ const readDuration = (url: string) => new Promise<number>((resolve, reject) => {
   audio.src = url;
 });
 
-const readWaveform = async (file: File, bins = 256): Promise<number[]> => {
+const readWaveform = async (file: File, bins = 2048): Promise<number[]> => {
   try {
     const context = new AudioContext();
     const buffer = await context.decodeAudioData(await file.arrayBuffer());

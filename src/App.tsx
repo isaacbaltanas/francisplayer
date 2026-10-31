@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
-import { createArrangement, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
+import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
 import { addAutomationAssignment, createAutomationState, removeAutomationAssignment, syncDefaultAutomationGroups } from './lib/automation';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
@@ -475,6 +475,7 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
   const fadeOutPercent = Math.min(100, (clip.fadeOutMs ?? 0) / clip.durationMs * 100);
   const visibleWaveform = clip.sourceDurationMs && clip.durationMs < clip.sourceDurationMs
     ? waveform.slice(0, Math.max(1, Math.round(waveform.length * clip.durationMs / clip.sourceDurationMs))) : waveform;
+  const waveformPath = visibleWaveform.map((peak, index) => `M${index + .5} ${50 - peak * 43}V${50 + peak * 43}`).join('');
   const startFadeDrag = (event: React.PointerEvent<HTMLButtonElement>, edge: 'in' | 'out') => {
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     setFadeDrag({ edge, clientX: event.clientX, initialMs: edge === 'in' ? (clip.fadeInMs ?? 0) : (clip.fadeOutMs ?? 0) });
@@ -511,7 +512,7 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
       setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
     }}>
     {clip.kind !== 'missing' && <svg className="clip-waveform" viewBox={`0 0 ${Math.max(1, visibleWaveform.length)} 100`} preserveAspectRatio="none" aria-hidden="true">
-      {visibleWaveform.map((peak, index) => <line key={index} x1={index + .5} x2={index + .5} y1={50 - peak * 43} y2={50 + peak * 43} />)}
+      <path d={waveformPath} />
     </svg>}
     {clip.kind !== 'missing' && <svg className="clip-fades" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
       {fadeInPercent > 0 && <path d={`M0 100 Q ${fadeInPercent * .35} 10 ${fadeInPercent} 0`} />}
@@ -880,14 +881,26 @@ export default function App() {
     }
   };
 
-  const mount = () => {
+  const buildArrangement = (nextSettings: ArrangementSettings) => {
     stopPreview();
     player.stop();
-    const next = createArrangement(musicSequence, voiceSequence, settings);
+    const next = createArrangement(musicSequence, voiceSequence, nextSettings);
     setArrangement(next);
     setAutomation({ ...createAutomationState(next, audioSettings),
       displayUnit: editingPreferences.automationDisplayUnit,
       visible: editingPreferences.showAutomations });
+  };
+
+  const mount = () => buildArrangement(settings);
+
+  const addAllToTimeline = (kind: MediaKind) => {
+    const requiredDurationMs = kind === 'music'
+      ? durationToIncludeAllMusic(musicSequence, settings.targetDurationMs)
+      : voiceScheduleDuration(scheduledVoiceSequence, settings.voiceIntervalMs, settings.allowVoiceOverlap);
+    const nextSettings = requiredDurationMs > settings.targetDurationMs
+      ? { ...settings, targetDurationMs: requiredDurationMs } : settings;
+    if (nextSettings !== settings) setSettings(nextSettings);
+    buildArrangement(nextSettings);
   };
 
   const changeArrangementSettings = (patch: Partial<ArrangementSettings>) => {
@@ -1027,7 +1040,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.15.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.15.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1066,7 +1079,7 @@ export default function App() {
       setArrangement(project.arrangement); setAutomation(project.automation);
       setQuarantine(project.quarantine ?? []); setImportLogs(project.importLogs ?? []);
       setProjectPath(opened.projectPath); setProjectName(project.name);
-      const missingWaveforms = projectAssets.filter(asset => asset.waveform.length === 0);
+      const missingWaveforms = projectAssets.filter(asset => asset.waveform.length < 2048);
       if (missingWaveforms.length && window.francisDesktop?.generateWaveforms) {
         setImportProgress({ completed: 0, total: missingWaveforms.length });
         void window.francisDesktop.generateWaveforms(missingWaveforms.map(asset => asset.path)).then(generated => {
@@ -1154,7 +1167,7 @@ export default function App() {
           <AssetList kind="music" assets={music} tabs={libraryTabs.filter(tab => tab.kind === 'music')}
             activeTabId={activeMusicTabId} insertion={musicInsertion} activePreview={activePreview} occurrences={occurrences}
             allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
-            onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={mount}
+            onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={() => addAllToTimeline('music')}
             onSelectTab={setActiveMusicTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
             onToggleLocalAutomation={(id) => {
@@ -1168,7 +1181,7 @@ export default function App() {
           <AssetList kind="voice" assets={voices} tabs={libraryTabs.filter(tab => tab.kind === 'voice')}
             activeTabId={activeVoiceTabId} insertion={voiceInsertion} activePreview={activePreview} occurrences={occurrences}
             allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
-            onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={mount}
+            onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={() => addAllToTimeline('voice')}
             onSelectTab={setActiveVoiceTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
             onToggleLocalAutomation={(id) => {

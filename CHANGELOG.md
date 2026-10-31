@@ -2,6 +2,20 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.15.1] - 2026-10-31
+
+### Corregido
+
+- «Añadir todo a pista» amplía la duración objetivo cuando la lista musical es más larga, evitando omitir las últimas canciones.
+- El protocolo multimedia entrega cabeceras CORS y la reproducción deja de quedar silenciada al atravesar Web Audio.
+- Los elementos de audio de la línea de tiempo configuran correctamente el origen cruzado antes de cargar su archivo.
+
+### Cambiado
+
+- Las formas de onda pasan de 256 a 2.048 picos reales por archivo, ocho veces más precisión al ampliar.
+- Cada forma de onda utiliza un único trazado SVG para mantener fluidez aunque aumente el detalle.
+- Los proyectos con ondas de resolución anterior se actualizan automáticamente al abrirse.
+
 ## [0.15.0] - 2026-10-31
 
 ### Añadido

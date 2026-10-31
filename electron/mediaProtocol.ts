@@ -37,7 +37,12 @@ export const registerMediaProtocol = (ffmpegPath: string | null) => {
     try {
       const playablePath = (url.searchParams.get('proxy') === '1' || requiresPreviewProxy(filePath)) && ffmpegPath
         ? await createPreviewProxy(filePath, ffmpegPath) : filePath;
-      return net.fetch(pathToFileURL(playablePath).href);
+      const response = await net.fetch(pathToFileURL(playablePath).href);
+      const headers = new Headers(response.headers);
+      headers.set('Access-Control-Allow-Origin', '*');
+      headers.set('Access-Control-Allow-Headers', 'Range');
+      headers.set('Access-Control-Expose-Headers', 'Accept-Ranges, Content-Length, Content-Range');
+      return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     } catch (error) {
       return new Response(error instanceof Error ? error.message : 'Unable to prepare audio preview', { status: 500 });
     }

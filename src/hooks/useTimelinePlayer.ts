@@ -73,7 +73,9 @@ const createGraph = async (onMeter: (reading: LoudnessMeterReading) => void): Pr
 };
 
 const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: TimelineClip, positionMs: number, gainValue: number) => {
-  const element = new Audio(asset.previewUrl);
+  const element = new Audio();
+  element.crossOrigin = 'anonymous';
+  element.src = asset.previewUrl;
   element.preload = 'auto';
   const source = graph.context.createMediaElementSource(element);
   const gain = graph.context.createGain(); gain.gain.value = safeGain(gainValue);
