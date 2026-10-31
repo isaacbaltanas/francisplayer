@@ -20,6 +20,7 @@ describe('library insertion logic', () => {
 
   it('parses human one-based custom patterns', () => {
     expect(parseInsertionPattern('1, 2, 1, 3', 3)).toEqual([0, 1, 0, 2]);
+    expect(parseInsertionPattern('10, 1, 5', 10)).toEqual([9, 0, 4]);
   });
 
   it('alternates tabs until all queues are empty', () => {
@@ -55,5 +56,23 @@ describe('library insertion logic', () => {
       const largestGap = Math.max(...positions.slice(1).map((position, index) => position - positions[index]));
       expect(largestGap).toBeLessThanOrEqual(Math.ceil(idealGap) + 1);
     }
+  });
+
+  it('balances ten music groups with the same rules and keeps every song once', () => {
+    const musicTabs: LibraryTab[] = Array.from({ length: 10 }, (_, index) => ({
+      id: `m${index + 1}`, kind: 'music', name: `Music ${index + 1}`, color: '#fff',
+      localAutomationEnabled: false, automationPoints: []
+    }));
+    const counts = [50, 45, 40, 35, 30, 25, 20, 15, 10, 5];
+    const songs = counts.flatMap((count, tabIndex) => Array.from({ length: count }, (_, songIndex) => ({
+      id: `song-${tabIndex}-${songIndex}`, name: `Song ${tabIndex}-${songIndex}`, kind: 'music' as const,
+      libraryTabId: `m${tabIndex + 1}`, durationMs: 1_000, sizeBytes: 1, path: `${tabIndex}-${songIndex}`,
+      previewUrl: `${tabIndex}-${songIndex}`, color: '#fff', waveform: []
+    } satisfies MediaAsset)));
+    const sequence = createInsertionSequence(musicTabs, songs, 'm1', config('balanced'), 1);
+    expect(sequence).toHaveLength(275);
+    expect(new Set(sequence.map(item => item.id)).size).toBe(275);
+    counts.forEach((count, index) => expect(sequence.filter(item => item.libraryTabId === `m${index + 1}`)).toHaveLength(count));
+    expect(sequence.every((item, index) => index === 0 || item.libraryTabId !== sequence[index - 1].libraryTabId)).toBe(true);
   });
 });

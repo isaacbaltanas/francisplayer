@@ -77,7 +77,7 @@ const initialTabs: LibraryTab[] = [
   { id: 'music-1', kind: 'music', name: 'Música 1', color: '#4f8cff', localAutomationEnabled: false, automationPoints: [] },
   { id: 'voice-1', kind: 'voice', name: 'Locuciones 1', color: '#de6ea8', localAutomationEnabled: false, automationPoints: [] }
 ];
-const defaultMusicInsertion: InsertionConfig = { mode: 'all', customPattern: '1, 2, 1, 3' };
+const defaultMusicInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
 const defaultVoiceInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
 
 interface ProjectSnapshot {
@@ -1419,7 +1419,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.25.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.25.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1431,7 +1431,8 @@ export default function App() {
     audioSettings: { ...defaultAudioSettings, ...snapshot.audioSettings },
     editingPreferences: { ...defaultEditingPreferences, ...snapshot.editingPreferences },
     libraryTabs: snapshot.libraryTabs ?? initialTabs,
-    musicInsertion: snapshot.musicInsertion ?? defaultMusicInsertion,
+    musicInsertion: snapshot.musicInsertion?.mode === 'all' && !snapshot.musicInsertion.userSelected
+      ? defaultMusicInsertion : snapshot.musicInsertion ?? defaultMusicInsertion,
     voiceInsertion: snapshot.voiceInsertion?.mode === 'all' && !snapshot.voiceInsertion.userSelected
       ? defaultVoiceInsertion : snapshot.voiceInsertion ?? defaultVoiceInsertion,
     assets: (snapshot.assets ?? []).map(asset => ({ ...asset, waveform: asset.waveform ?? [] })),
