@@ -143,6 +143,7 @@ export interface EditingPreferences {
   snapEnabled: boolean;
   snapMode: SnapMode;
   snapGridMs: number;
+  transportSkipSeconds: number;
   allowAssetReuse: boolean;
   verifyFileIntegrity: boolean;
   analyzeLoudnessOnImport: boolean;

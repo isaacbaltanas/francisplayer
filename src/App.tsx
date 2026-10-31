@@ -55,6 +55,7 @@ const defaultEditingPreferences: EditingPreferences = {
   snapEnabled: true,
   snapMode: 'smart',
   snapGridMs: 1000,
+  transportSkipSeconds: 10,
   allowAssetReuse: true,
   verifyFileIntegrity: true,
   analyzeLoudnessOnImport: true,
@@ -392,6 +393,12 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         <input type="number" min="10" max="60000" step="10" value={editingPreferences.snapGridMs}
           onChange={(event) => onEditingPreferencesChange({ snapGridMs: Math.max(10, Number(event.target.value)) })} /><em>ms</em>
       </div></label>
+      <label className="field full"><span>{t('transportSkipInterval')}</span><div className="number-field">
+        <input type="number" list="transport-skip-presets" min="1" max="86400" step="1" value={editingPreferences.transportSkipSeconds}
+          onChange={(event) => onEditingPreferencesChange({ transportSkipSeconds: Math.max(1, Math.min(86400, Math.round(Number(event.target.value)))) })} />
+        <em>{t('seconds')}</em>
+        <datalist id="transport-skip-presets">{[10, 20, 30, 60, 90, 120, 300, 600].map(value => <option key={value} value={value} />)}</datalist>
+      </div></label>
       <Toggle label={t('allowAssetReuse')} checked={editingPreferences.allowAssetReuse}
         onChange={(allowAssetReuse) => onEditingPreferencesChange({ allowAssetReuse })} />
       <Toggle label={t('verifyFileIntegrity')} checked={editingPreferences.verifyFileIntegrity}
@@ -636,19 +643,31 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
         <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
       {voiceOverlaps.size > 0 && <div className="warnings overlap-warning"><p>! {t('warningVoiceOverlap', { count: voiceOverlaps.size })}</p></div>}
       <div className="transport">
-        <button className="transport-primary" onClick={isPlaying ? onPause : onPlay}
-          aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
-        <button className="transport-stop" onClick={onStop} aria-label={t('stopProgram')}>■</button>
-        <time className="transport-position">{formatDuration(positionMs, true)}</time>
+        <div className="transport-time"><time className="transport-position">{formatDuration(positionMs, true)}</time>
+          <span>/</span><time className="transport-duration">{formatDuration(arrangement.durationMs)}</time></div>
+        <div className="transport-controls">
+          <button className="transport-skip" disabled={positionMs <= 0}
+            onClick={() => onSeek(positionMs - editingPreferences.transportSkipSeconds * 1000)}
+            aria-label={t('skipBackward', { seconds: editingPreferences.transportSkipSeconds })}
+            title={t('skipBackward', { seconds: editingPreferences.transportSkipSeconds })}>−{editingPreferences.transportSkipSeconds}s</button>
+          <button className="transport-primary" onClick={isPlaying ? onPause : onPlay}
+            aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
+          <button className="transport-stop" onClick={onStop} aria-label={t('stopProgram')}>■</button>
+          <button className="transport-skip" disabled={positionMs >= arrangement.durationMs}
+            onClick={() => onSeek(positionMs + editingPreferences.transportSkipSeconds * 1000)}
+            aria-label={t('skipForward', { seconds: editingPreferences.transportSkipSeconds })}
+            title={t('skipForward', { seconds: editingPreferences.transportSkipSeconds })}>+{editingPreferences.transportSkipSeconds}s</button>
+        </div>
         <input className="transport-seek-slider" type="range" min="0" max={arrangement.durationMs} step="100" value={positionMs}
           onChange={(event) => onSeek(Number(event.target.value))} />
-        <time className="transport-duration">{formatDuration(arrangement.durationMs)}</time>
-        <div className="gain-meter"><span>{t('musicGain')}</span><strong>{musicGainDb.toFixed(1)} dB</strong>
-          <i style={{ width: `${Math.max(0, Math.min(100, (musicGainDb + 80) / 80 * 100))}%` }} /></div>
-        <div className="loudness-meter" title={t('loudnessMeterHelp')}>
-          <span>M <b>{meter.momentary.toFixed(1)}</b></span><span>S <b>{meter.shortTerm.toFixed(1)}</b></span>
-          <span>I <b>{meter.integrated.toFixed(1)}</b></span><span>PK <b>{meter.peakDbfs.toFixed(1)}</b></span>
-          <i style={{ width: `${Math.max(0, Math.min(100, (meter.momentary + 60) / 51 * 100))}%` }} />
+        <div className="transport-meters">
+          <div className="gain-meter"><span>{t('musicGain')}</span><strong>{musicGainDb.toFixed(1)} dB</strong>
+            <i style={{ width: `${Math.max(0, Math.min(100, (musicGainDb + 80) / 80 * 100))}%` }} /></div>
+          <div className="loudness-meter" title={t('loudnessMeterHelp')}>
+            <span>M <b>{meter.momentary.toFixed(1)}</b></span><span>S <b>{meter.shortTerm.toFixed(1)}</b></span>
+            <span>I <b>{meter.integrated.toFixed(1)}</b></span><span>PK <b>{meter.peakDbfs.toFixed(1)}</b></span>
+            <i style={{ width: `${Math.max(0, Math.min(100, (meter.momentary + 60) / 51 * 100))}%` }} />
+          </div>
         </div>
       </div>
       <div className="timeline-shell">
@@ -1041,7 +1060,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.15.4', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.16.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

@@ -2,6 +2,17 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.16.0] - 2026-10-31
+
+### Añadido
+
+- Controles de retroceso y avance en el transporte, limitados automáticamente por el inicio y el final del montaje.
+- Intervalo configurable en Preferencias, con valores sugeridos de 10, 20, 30, 60, 90, 120, 300 y 600 segundos y admisión de valores enteros personalizados.
+
+### Cambiado
+
+- Los controles principales del transporte quedan centrados independientemente de los tiempos y medidores laterales.
+
 ## [0.15.4] - 2026-10-31
 
 ### Corregido
