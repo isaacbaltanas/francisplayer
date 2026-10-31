@@ -2,6 +2,19 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.20.0] - 2026-10-31
+
+### Añadido
+
+- Cada importación concurrente dispone de su propia notificación, nombre y barra de progreso.
+- Música y locuciones pueden analizarse simultáneamente sin que una barra sustituya a la otra.
+- Las rampas diagonales de ducking pueden arrastrarse lateralmente conservando duración, inclinación y niveles.
+
+### Corregido
+
+- Las notificaciones nuevas se apilan encima de las anteriores y desaparecen únicamente cuando termina su propio trabajo.
+- El desplazamiento lateral de una transición respeta los límites de la locución y evita que los puntos bajos se crucen.
+
 ## [0.19.0] - 2026-10-31
 
 ### Añadido

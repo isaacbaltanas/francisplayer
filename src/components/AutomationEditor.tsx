@@ -217,8 +217,19 @@ export function AutomationEditor({ arrangement, state, onChange }: {
       value = clamp(100 - ((event.clientY - rect.top) / rect.height) * 100, 0, 100);
     } else {
       const deltaMs = (event.clientX - drag.startClientX) / rect.width * arrangement.durationMs;
-      const direction = drag.segment.type === 'fadeDown' ? -1 : 1;
-      value = clamp(drag.initialValue + deltaMs * direction, drag.initialOffset, 30_000);
+      const voice = arrangement.voice.find(item => item.id === drag.segment!.eventId);
+      const eventPoints = points.filter(point => point.eventId === drag.segment!.eventId);
+      const bottomDown = eventPoints.find(point => point.role === 'fadeDownBottom')?.timeMs ?? voice?.startMs ?? 0;
+      const bottomUp = eventPoints.find(point => point.role === 'fadeUpBottom')?.timeMs ?? (voice ? voice.startMs + voice.durationMs : 0);
+      if (!voice) return;
+      const maxOffset = drag.segment.type === 'fadeDown'
+        ? Math.min(drag.initialValue, Math.max(0, bottomUp - voice.startMs))
+        : Math.min(drag.initialValue, Math.max(0, voice.startMs + voice.durationMs - bottomDown));
+      const offset = drag.segment.type === 'fadeDown'
+        ? clamp(drag.initialOffset + deltaMs, 0, maxOffset)
+        : clamp(drag.initialOffset - deltaMs, 0, maxOffset);
+      onChange(updateAutomationTransition(state, drag.groupId, drag.initialValue, offset));
+      return;
     }
     onChange(updateAutomationGroup(state, drag.groupId, value));
   };
@@ -253,7 +264,8 @@ export function AutomationEditor({ arrangement, state, onChange }: {
         const highlighted = highlightedGroup === segment.groupId;
         const wideEnough = x2 - x1 > 55;
         return <g key={segment.id} className={highlighted ? 'automation-group-highlighted' : ''}>
-          <line className="automation-hit" x1={x1} x2={x2} y1={yFor(segment.startPercent)} y2={yFor(segment.endPercent)}
+          <line className={`automation-hit ${segment.type === 'fadeDown' || segment.type === 'fadeUp' ? 'automation-transition-hit' : ''}`}
+            x1={x1} x2={x2} y1={yFor(segment.startPercent)} y2={yFor(segment.endPercent)}
             onPointerDown={(event) => startDrag(event, segment)}
             onDoubleClick={() => detach(segment)}
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY, segment }); }} />

@@ -127,7 +127,9 @@ ipcMain.handle('media:import-paths', async (event, request: any) => {
   if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');
   const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
   return scanImportPaths({ ...request, ffmpegPath: binary,
-    onProgress: (completed: number, total: number) => event.sender.send('media:import-progress', { completed, total }) });
+    onProgress: (completed: number, total: number) => event.sender.send('media:import-progress', {
+      jobId: request.jobId, kind: request.kind, completed, total
+    }) });
 });
 ipcMain.handle('media:generate-waveforms', async (event, filePaths: string[]) => {
   if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');

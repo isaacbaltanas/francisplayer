@@ -798,7 +798,9 @@ export default function App() {
   const [importLogs, setImportLogs] = useState<ImportLog[]>([]);
   const [quarantineOpen, setQuarantineOpen] = useState(false);
   const [importLogOpen, setImportLogOpen] = useState(false);
-  const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
+  const [importProgressJobs, setImportProgressJobs] = useState<Array<{
+    id: string; kind?: MediaKind; label: string; completed: number; total: number;
+  }>>([]);
   const audio = useRef<HTMLAudioElement | null>(null);
   const previewGeneration = useRef(0);
   const activePreviewRef = useRef<string | null>(null);
@@ -830,7 +832,16 @@ export default function App() {
     assetsRef.current.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
   }, []); // URLs are intentionally cleaned only when the app closes.
 
-  useEffect(() => window.francisDesktop?.onImportProgress(setImportProgress), []);
+  useEffect(() => window.francisDesktop?.onImportProgress(progress => {
+    const id = progress.jobId ?? 'background-analysis';
+    setImportProgressJobs(current => {
+      const existing = current.some(job => job.id === id);
+      const label = progress.kind === 'music' ? t('analyzingMusic') : progress.kind === 'voice' ? t('analyzingVoices') : t('analyzingFiles');
+      return existing
+        ? current.map(job => job.id === id ? { ...job, completed: progress.completed, total: progress.total } : job)
+        : [...current, { id, kind: progress.kind, label, completed: progress.completed, total: progress.total }];
+    });
+  }), [t]);
 
   useEffect(() => {
     if (!error) return;
@@ -852,12 +863,15 @@ export default function App() {
   const addFiles = async (files: File[], kind: MediaKind, tabId: string) => {
     if (!files.length) return;
     setError(null);
+    let importJobId: string | undefined;
     try {
       let assets: MediaAsset[];
       if (window.francisDesktop) {
         const inputPaths = files.map(file => window.francisDesktop!.getPathForFile(file)).filter(Boolean);
-        setImportProgress({ completed: 0, total: inputPaths.length });
-        const result = await window.francisDesktop.importPaths({ inputPaths, kind, tabId,
+        importJobId = crypto.randomUUID();
+        setImportProgressJobs(current => [...current, { id: importJobId!, kind,
+          label: t(kind === 'music' ? 'analyzingMusic' : 'analyzingVoices'), completed: 0, total: inputPaths.length }]);
+        const result = await window.francisDesktop.importPaths({ inputPaths, kind, tabId, jobId: importJobId,
           verifyIntegrity: editingPreferences.verifyFileIntegrity,
           analyzeLoudness: editingPreferences.analyzeLoudnessOnImport,
           normalizationTargetLufs: audioSettings.normalizationTargetLufs ?? -23,
@@ -887,7 +901,7 @@ export default function App() {
     } catch {
       setError(t('fileError'));
     } finally {
-      setImportProgress(null);
+      if (importJobId) setImportProgressJobs(current => current.filter(job => job.id !== importJobId));
     }
   };
 
@@ -1145,7 +1159,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.19.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.20.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1187,7 +1201,9 @@ export default function App() {
       if (window.francisDesktop?.preparePreviews) void window.francisDesktop.preparePreviews(projectAssets.map(asset => asset.path)).catch(() => undefined);
       const missingWaveforms = projectAssets.filter(asset => asset.waveform.length < 2048);
       if (missingWaveforms.length && window.francisDesktop?.generateWaveforms) {
-        setImportProgress({ completed: 0, total: missingWaveforms.length });
+        setImportProgressJobs(current => [...current.filter(job => job.id !== 'background-analysis'), {
+          id: 'background-analysis', label: t('analyzingFiles'), completed: 0, total: missingWaveforms.length
+        }]);
         void window.francisDesktop.generateWaveforms(missingWaveforms.map(asset => asset.path)).then(generated => {
           if (waveformHydrationGeneration.current !== hydrationGeneration) return;
           const byPath = new Map(generated.map(item => [item.path, item.waveform]));
@@ -1195,7 +1211,9 @@ export default function App() {
             ? { ...asset, waveform: byPath.get(asset.path) ?? [] } : asset);
           setMusic(hydrate); setVoices(hydrate);
         }).finally(() => {
-          if (waveformHydrationGeneration.current === hydrationGeneration) setImportProgress(null);
+          if (waveformHydrationGeneration.current === hydrationGeneration) {
+            setImportProgressJobs(current => current.filter(job => job.id !== 'background-analysis'));
+          }
         });
       }
     } catch {
@@ -1330,11 +1348,11 @@ export default function App() {
     <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />
     <QuarantineDialog open={quarantineOpen} items={quarantine} onClose={() => setQuarantineOpen(false)} onAdmit={admitFromQuarantine} />
     <ImportLogDialog open={importLogOpen} logs={importLogs} onClose={() => setImportLogOpen(false)} />
-    {(error || importProgress) && <div className="toast-stack" aria-live="polite">
+    {(error || importProgressJobs.length > 0) && <div className="toast-stack" aria-live="polite">
       {error && <div className="app-toast error-toast"><strong>{t('warning')}</strong>
         <button onClick={() => setError(null)} aria-label={t('close')}>×</button><span>{error}</span></div>}
-      {importProgress && <div className="app-toast import-progress-toast"><strong>{t('analyzingFiles')}</strong>
-        <span>{importProgress.completed} / {importProgress.total}</span><i><b style={{ width: `${importProgress.total ? importProgress.completed / importProgress.total * 100 : 0}%` }} /></i></div>}
+      {importProgressJobs.map(job => <div className="app-toast import-progress-toast" key={job.id}><strong>{job.label}</strong>
+        <span>{job.completed} / {job.total}</span><i><b style={{ width: `${job.total ? job.completed / job.total * 100 : 0}%` }} /></i></div>)}
     </div>}
   </div>;
 }
