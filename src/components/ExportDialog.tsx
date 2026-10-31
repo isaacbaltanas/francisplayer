@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { ExportProgress, ExportResult, ExportSettings } from '../types';
 
 const defaults: ExportSettings = {
-  format: 'wav', channels: 2, sampleRate: 48000, bitDepth: 24,
+  format: 'wav', channels: 2, sampleRate: 44100, bitDepth: 16,
   bitrate: 256, compressionLevel: 5, normalize: false,
   verifyOutput: true, detectSilence: true, silenceThresholdDb: -50, silenceMinimumMs: 3000
 };

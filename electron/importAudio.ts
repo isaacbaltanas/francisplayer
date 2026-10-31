@@ -154,7 +154,7 @@ const refineBoundary = (binary: string, filePath: string, targetMs: number, dura
     if (targetMs <= 0 || targetMs >= durationMs) { resolve(targetMs); return; }
     const startMs = Math.max(0, targetMs - radiusMs);
     const endMs = Math.min(durationMs, targetMs + radiusMs);
-    const sampleRate = 48_000;
+    const sampleRate = 44_100;
     const process = spawn(binary, ['-hide_banner', '-loglevel', 'error', '-ss', String(startMs / 1000), '-i', filePath,
       '-t', String((endMs - startMs) / 1000), '-map', '0:a:0', '-ac', '1', '-ar', String(sampleRate), '-f', 'f32le', 'pipe:1'],
     { windowsHide: true });
