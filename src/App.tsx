@@ -64,7 +64,7 @@ const defaultEditingPreferences: EditingPreferences = {
   mixEditorMode: 'values'
 };
 
-const acceptAudio = '.mp3,.wav,.m4a,.aac,.flac,.ogg,audio/*';
+const acceptAudio = '.mp3,.wav,.wave,.m4a,.aac,.flac,.ogg,.oga,.opus,.aif,.aiff,.wma,audio/*';
 const tabColors = ['#4f8cff', '#de6ea8', '#4eb6a1', '#d4a63d', '#9b72cf', '#e77d50'];
 const initialTabs: LibraryTab[] = [
   { id: 'music-1', kind: 'music', name: 'Música 1', color: '#4f8cff', localAutomationEnabled: false, automationPoints: [] },
@@ -740,6 +740,12 @@ export default function App() {
   useEffect(() => window.francisDesktop?.onImportProgress(setImportProgress), []);
 
   useEffect(() => {
+    if (!error) return;
+    const timeout = window.setTimeout(() => setError(null), 8000);
+    return () => window.clearTimeout(timeout);
+  }, [error]);
+
+  useEffect(() => {
     if (!scheduledVoiceSequence.length || settings.voicePlacement !== 'interval') return;
     const patch = settings.durationFromVoices
       ? { targetDurationMs: voiceScheduleDuration(scheduledVoiceSequence, settings.voiceIntervalMs, settings.allowVoiceOverlap) }
@@ -810,18 +816,26 @@ export default function App() {
       return;
     }
     audio.current?.pause();
-    const next = new Audio(asset.previewUrl);
-    next.preload = 'auto';
-    next.onended = () => setActivePreview(null);
-    next.onerror = () => { setActivePreview(null); setError(t('previewError', { name: asset.name })); };
-    audio.current = next;
-    try {
+    const playUrl = async (url: string) => {
+      const next = new Audio(url);
+      next.preload = 'auto';
+      next.onended = () => setActivePreview(null);
+      audio.current = next;
       next.currentTime = 0;
       await next.play();
+    };
+    try {
+      await playUrl(asset.previewUrl);
       setActivePreview(asset.id);
     } catch {
-      setActivePreview(null);
-      setError(t('previewError', { name: asset.name }));
+      try {
+        if (!asset.previewUrl.startsWith('francis-media:')) throw new Error('No desktop proxy available');
+        await playUrl(`${asset.previewUrl}&proxy=1`);
+        setActivePreview(asset.id);
+      } catch {
+        setActivePreview(null);
+        setError(t('previewError', { name: asset.name }));
+      }
     }
   };
 
@@ -971,7 +985,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.14.1', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.14.2', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1077,7 +1091,6 @@ export default function App() {
     </header>
 
     <main>
-      {error && <div className="error-banner">{error}<button onClick={() => setError(null)}>×</button></div>}
       <div className="workspace-grid">
         <div className="library-area">
           <AssetList kind="music" assets={music} tabs={libraryTabs.filter(tab => tab.kind === 'music')}
@@ -1132,7 +1145,11 @@ export default function App() {
     <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />
     <QuarantineDialog open={quarantineOpen} items={quarantine} onClose={() => setQuarantineOpen(false)} onAdmit={admitFromQuarantine} />
     <ImportLogDialog open={importLogOpen} logs={importLogs} onClose={() => setImportLogOpen(false)} />
-    {importProgress && <div className="import-progress-toast"><strong>{t('analyzingFiles')}</strong>
-      <span>{importProgress.completed} / {importProgress.total}</span><i><b style={{ width: `${importProgress.total ? importProgress.completed / importProgress.total * 100 : 0}%` }} /></i></div>}
+    {(error || importProgress) && <div className="toast-stack" aria-live="polite">
+      {error && <div className="app-toast error-toast"><strong>{t('warning')}</strong>
+        <button onClick={() => setError(null)} aria-label={t('close')}>×</button><span>{error}</span></div>}
+      {importProgress && <div className="app-toast import-progress-toast"><strong>{t('analyzingFiles')}</strong>
+        <span>{importProgress.completed} / {importProgress.total}</span><i><b style={{ width: `${importProgress.total ? importProgress.completed / importProgress.total * 100 : 0}%` }} /></i></div>}
+    </div>}
   </div>;
 }

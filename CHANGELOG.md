@@ -2,6 +2,23 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.14.2] - 2026-10-31
+
+### Añadido
+
+- Conversión automática y en caché a MP3 para preescuchar AIFF y otros formatos que Chromium no decodifica de forma nativa.
+- AIFF, WMA, OGA y Opus aparecen también en el selector manual de archivos admitidos.
+
+### Cambiado
+
+- Los avisos utilizan una notificación compacta abajo a la derecha, con el mismo tamaño, posición y estilo base que «Analizando archivos…».
+- Las notificaciones de aviso pueden cerrarse manualmente y desaparecen automáticamente después de ocho segundos.
+
+### Corregido
+
+- La preescucha ya no indica que un AIFF disponible ha desaparecido cuando el problema real era la compatibilidad del decodificador.
+- La conversión temporal funciona igualmente en archivos recién importados y en proyectos `.francis` recuperados.
+
 ## [0.14.1] - 2026-10-31
 
 ### Añadido

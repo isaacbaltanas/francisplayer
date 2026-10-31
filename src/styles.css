@@ -44,8 +44,6 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .language-switch button.active { color: #18130d; background: var(--accent); }
 
 main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); margin: 0 auto; display: grid; grid-template-rows: minmax(0, 56%) minmax(40%, 1fr); gap: 12px; overflow: hidden; }
-.error-banner { background: #472328; border: 1px solid #77323b; color: #ffd6da; padding: 10px 14px; border-radius: 7px; margin-bottom: 16px; display: flex; justify-content: space-between; }
-.error-banner button { border: 0; background: none; cursor: pointer; }
 .workspace-grid { display: grid; grid-template-columns: minmax(650px, 1.5fr) minmax(390px, .82fr); gap: 12px; align-items: stretch; min-height: 0; overflow: hidden; }
 .library-area { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; min-height: 0; overflow: hidden; }
 .asset-panel, .settings-panel, .timeline-section { background: linear-gradient(150deg, rgba(28,32,36,.98), rgba(21,24,27,.98)); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.14); }
@@ -316,8 +314,12 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .log-summary time { padding-left: 10px; font: 8px ui-monospace, monospace; }.log-summary .ok { color: #80dabd; }.log-summary .warn { color: #efb066; }.log-summary .duplicate { color: #8ca8ce; }
 .log-entries { padding: 5px; background: #171a1d; }.log-entries > div { display: grid; grid-template-columns: 20px minmax(120px,.7fr) minmax(150px,1fr) minmax(160px,1.4fr); gap: 7px; padding: 5px; border-bottom: 1px solid #252a2e; align-items: center; }
 .log-entries strong { overflow: hidden; font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }.log-entries em { color: #737c81; font-size: 7px; font-style: normal; }.log-entries .quarantined > span { color: #eead60; }.log-entries .duplicate > span { color: #8ca8ce; }.log-entries .imported > span { color: #78d8b7; }
-.import-progress-toast { position: fixed; z-index: 150; right: 22px; bottom: 22px; width: 280px; padding: 13px; border: 1px solid #4b5459; border-radius: 8px; background: #202529; box-shadow: 0 14px 35px #000b; display: grid; grid-template-columns: 1fr auto; gap: 8px; color: #d8dddf; font-size: 9px; }
+.toast-stack { position: fixed; z-index: 150; right: 22px; bottom: 22px; width: 280px; display: grid; gap: 8px; }
+.app-toast { width: 280px; padding: 13px; border: 1px solid #4b5459; border-radius: 8px; background: #202529; box-shadow: 0 14px 35px #000b; display: grid; grid-template-columns: 1fr auto; gap: 8px; color: #d8dddf; font-size: 9px; animation: toast-in .18s ease-out; }
+.app-toast button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #929a9f; cursor: pointer; }
+.app-toast button:hover { background: #343a3e; color: #fff; }.error-toast { border-color: #71373e; background: #322125; }.error-toast strong { color: #ffafb6; }.error-toast > span { grid-column: 1 / -1; line-height: 1.4; }
 .import-progress-toast > span { font: 9px ui-monospace, monospace; }.import-progress-toast i { grid-column: 1 / -1; height: 4px; overflow: hidden; border-radius: 2px; background: #111416; }.import-progress-toast b { display: block; height: 100%; background: linear-gradient(90deg, #d8883d, #f3bc6e); transition: width .15s; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 
 @media (max-width: 980px) {
   .workspace-grid { grid-template-columns: 1fr; }

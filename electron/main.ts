@@ -179,7 +179,7 @@ app.on('open-file', (event, filePath) => {
 });
 
 app.whenReady().then(async () => {
-  registerMediaProtocol();
+  registerMediaProtocol(ffmpegStatic ? (app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic) : null);
   const icon = nativeImage.createFromPath(iconPath);
   if (process.platform === 'darwin' && !icon.isEmpty()) app.dock?.setIcon(icon);
   app.setAboutPanelOptions({
