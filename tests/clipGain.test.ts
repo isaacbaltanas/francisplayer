@@ -34,5 +34,6 @@ describe('clip and track gain', () => {
       fadeDownMs: 1_500, fadeUpMs: 2_000, fadeDownOverlapMs: 0, fadeUpOverlapMs: 0 };
     expect(Math.abs(calculateDuckingDb(4_999, [voice], settings) - calculateDuckingDb(5_000, [voice], settings))).toBeLessThan(.03);
     expect(Math.abs(calculateDuckingDb(12_999, [voice], settings) - calculateDuckingDb(13_000, [voice], settings))).toBeLessThan(.03);
+    expect(Math.abs(calculateDuckingDb(13_000, [voice], settings) - calculateDuckingDb(13_001, [voice], settings))).toBeLessThan(.03);
   });
 });

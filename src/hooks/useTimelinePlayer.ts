@@ -143,6 +143,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const graphRef = useRef<RealtimeAudioGraph | null>(null);
   const musicRef = useRef<Map<string, PlayingElement>>(new Map());
   const voicesRef = useRef<Map<string, PlayingBuffer>>(new Map());
+  const retiredVoicesRef = useRef<PlayingBuffer[]>([]);
   const voiceBuffersRef = useRef<Map<string, CachedVoiceBuffer>>(new Map());
   const voiceBufferPromisesRef = useRef<Map<string, Promise<AudioBuffer | null>>>(new Map());
   const playbackGenerationRef = useRef(0);
@@ -159,6 +160,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const dispose = (item: PlayingElement | PlayingBuffer) => item.cancel();
   const stopElements = useCallback(() => {
     musicRef.current.forEach(dispose); musicRef.current.clear(); voicesRef.current.forEach(dispose); voicesRef.current.clear();
+    retiredVoicesRef.current.forEach(item => item.release()); retiredVoicesRef.current = [];
   }, []);
 
   const mediaClockPosition = useCallback(() => {
@@ -248,8 +250,10 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     const registerVoice = (clipId: string, created: PlayingBuffer) => {
       voicesRef.current.set(clipId, created);
       created.source.onended = () => {
-        created.release();
-        if (voicesRef.current.get(clipId) === created) voicesRef.current.delete(clipId);
+        if (voicesRef.current.get(clipId) === created) {
+          voicesRef.current.delete(clipId);
+          retiredVoicesRef.current.push(created);
+        }
       };
     };
     upcomingVoices.forEach(clip => {
