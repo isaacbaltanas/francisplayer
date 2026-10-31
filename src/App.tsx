@@ -343,14 +343,12 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
   });
 
   return <aside className={`settings-panel ${collapsed ? 'collapsed' : ''}`}>
-    <div className="panel-heading settings-title">
-      <div><h2>{t('setup')}</h2></div>
-      <button className="settings-collapse-button" onClick={onToggleCollapsed} aria-expanded={!collapsed}
-        aria-label={t(collapsed ? 'expandSettings' : 'collapseSettings')} title={t(collapsed ? 'expandSettings' : 'collapseSettings')}>
-        {collapsed ? '‹' : '›'}
-      </button>
-      {collapsed && <span className="collapsed-settings-label">{t('setup')}</span>}
-    </div>
+    <div className="settings-expanded-content">
+      <div className="panel-heading settings-title">
+        <div><h2>{t('setup')}</h2></div>
+        <button className="settings-collapse-button" onClick={onToggleCollapsed} aria-expanded={!collapsed}
+          aria-label={t('collapseSettings')} title={t('collapseSettings')}>›</button>
+      </div>
 
     <div className="settings-tabs">
       {(['arrangement', 'audio', 'automation', 'editing'] as const).map(item => <button key={item}
@@ -539,7 +537,11 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       <p className="settings-help">{t('integrityHelp')}</p>
       <p className="settings-help">{t('snapControlHint')}</p>
     </div>}
-
+    </div>
+    <button className="settings-collapsed-rail" onClick={onToggleCollapsed} aria-expanded={!collapsed}
+      aria-label={t('expandSettings')} title={t('expandSettings')}>
+      <span aria-hidden="true">‹</span><b>{t('setup')}</b>
+    </button>
   </aside>;
 }
 
@@ -874,6 +876,10 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
             <span>M <b>{meter.momentary.toFixed(1)}</b></span><span>S <b>{meter.shortTerm.toFixed(1)}</b></span>
             <span>I <b>{meter.integrated.toFixed(1)}</b></span><span>PK <b>{meter.peakDbfs.toFixed(1)}</b></span>
             <i style={{ width: `${Math.max(0, Math.min(100, (meter.momentary + 60) / 51 * 100))}%` }} />
+          </div>
+          <div className="compact-loudness-meter" title={`${t('loudnessMeterHelp')} · M ${meter.momentary.toFixed(1)} · S ${meter.shortTerm.toFixed(1)} · I ${meter.integrated.toFixed(1)} · PK ${meter.peakDbfs.toFixed(1)}`}>
+            {([['M', meter.momentary], ['S', meter.shortTerm], ['I', meter.integrated], ['PK', meter.peakDbfs]] as const).map(([label, value]) =>
+              <span key={label}><i style={{ height: `${Math.max(3, Math.min(100, (value + 60) / 51 * 100))}%` }} /><b>{label}</b></span>)}
           </div>
         </div>
         <div className="timeline-tools"><button className={`magnet-button ${editingPreferences.snapEnabled ? 'active' : ''}`}
@@ -1533,7 +1539,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.29.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.30.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1782,7 +1788,7 @@ export default function App() {
       </div>
     </header>
 
-    <main className={settingsCollapsed ? 'settings-collapsed' : ''}>
+    <main className={settingsCollapsed ? 'settings-collapsed' : 'settings-expanded'}>
       <div className="workspace-grid">
         <div className="library-area">
           <AssetList kind="music" assets={music} tabs={libraryTabs.filter(tab => tab.kind === 'music')}
