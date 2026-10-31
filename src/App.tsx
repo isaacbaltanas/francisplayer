@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
-import { addAutomationAssignment, createAutomationState, removeAutomationAssignment, syncDefaultAutomationGroups } from './lib/automation';
+import { addAutomationAssignment, createAutomationState, syncDefaultAutomationGroups } from './lib/automation';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
 import { useTimelinePlayer } from './hooks/useTimelinePlayer';
@@ -456,7 +456,8 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
     onChange={(event) => onChange(event.target.checked)} /><i /></label>;
 }
 
-function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef, preferences, dimmed, highlighted, onMove, onRemove, onFadeChange, onDragEnd }: {
+function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef, preferences, dimmed, highlighted, selected,
+  onSelect, onMove, onRemove, onFadeChange, onDragGuide, onDragEnd }: {
   clip: TimelineClip;
   waveform: number[];
   overlapping: boolean;
@@ -465,17 +466,20 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
   preferences: EditingPreferences;
   dimmed: boolean;
   highlighted: boolean;
+  selected: boolean;
+  onSelect: (clipId: string, additive: boolean) => void;
   onMove: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
   onRemove: (clip: TimelineClip) => void;
   onFadeChange: (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => void;
+  onDragGuide: (guideMs: number | null) => void;
   onDragEnd: () => void;
 }) {
   const { t } = useTranslation();
-  const [drag, setDrag] = useState<{ clientX: number; startMs: number } | null>(null);
+  const [drag, setDrag] = useState<{ clientX: number; startMs: number; previewStartMs: number; guideMs: number | null; moved: boolean } | null>(null);
   const [fadeDrag, setFadeDrag] = useState<{ edge: 'in' | 'out'; clientX: number; initialMs: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const totalMs = arrangement.durationMs;
-  const left = (clip.startMs / totalMs) * 100;
+  const left = ((drag?.previewStartMs ?? clip.startMs) / totalMs) * 100;
   const width = Math.max((clip.durationMs / totalMs) * 100, 0.18);
   const style = { left: `${left}%`, width: `${width}%`, backgroundColor: clip.color };
   const fadeInPercent = Math.min(100, (clip.fadeInMs ?? 0) / clip.durationMs * 100);
@@ -487,35 +491,53 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     setFadeDrag({ edge, clientX: event.clientX, initialMs: edge === 'in' ? (clip.fadeInMs ?? 0) : (clip.fadeOutMs ?? 0) });
   };
-  return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''} ${drag ? 'dragging' : ''} ${dimmed ? 'clip-dimmed' : ''} ${highlighted ? 'clip-highlighted' : ''} ${overlapping ? 'clip-overlapping' : ''}`} style={style}
+  return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''} ${drag ? 'dragging' : ''} ${selected ? 'clip-selected' : ''} ${dimmed ? 'clip-dimmed' : ''} ${highlighted ? 'clip-highlighted' : ''} ${overlapping ? 'clip-overlapping' : ''}`} style={style}
     title={`${clip.kind === 'missing' ? t('missingMusic') : clip.name} · ${formatDuration(clip.durationMs)}`}
+    role={clip.kind === 'missing' ? undefined : 'button'} aria-pressed={clip.kind === 'missing' ? undefined : selected}
+    tabIndex={clip.kind === 'missing' ? undefined : 0}
+    onClick={(event) => event.stopPropagation()}
+    onKeyDown={(event) => {
+      if (clip.kind !== 'missing' && event.key === 'Enter') {
+        event.preventDefault(); onSelect(clip.id, event.shiftKey || event.metaKey || event.ctrlKey);
+      }
+    }}
     onPointerDown={(event) => {
       if (clip.kind === 'missing' || event.button !== 0) return;
       event.stopPropagation();
+      onSelect(clip.id, event.shiftKey || event.metaKey || event.ctrlKey);
       event.currentTarget.setPointerCapture(event.pointerId);
-      setDrag({ clientX: event.clientX, startMs: clip.startMs });
+      setDrag({ clientX: event.clientX, startMs: clip.startMs, previewStartMs: clip.startMs, guideMs: null, moved: false });
       setMenu(null);
     }}
     onPointerMove={(event) => {
       if (!drag || !canvasRef.current) return;
       event.stopPropagation();
+      if (!drag.moved && Math.abs(event.clientX - drag.clientX) < 2) return;
       const widthPx = canvasRef.current.getBoundingClientRect().width;
       const proposed = drag.startMs + (event.clientX - drag.clientX) / widthPx * arrangement.durationMs;
       if (!preferences.snapEnabled || event.ctrlKey) {
-        onMove(clip.id, clip.kind, Math.max(0, Math.min(arrangement.durationMs - clip.durationMs, proposed)), null);
+        const previewStartMs = Math.max(0, Math.min(arrangement.durationMs - clip.durationMs, proposed));
+        setDrag(current => current ? { ...current, previewStartMs, guideMs: null, moved: true } : current);
+        onDragGuide(null);
         return;
       }
       const snapped = snapClipStart({
         proposedStartMs: proposed, clip, arrangement, mode: preferences.snapMode,
         gridMs: preferences.snapGridMs, toleranceMs: arrangement.durationMs / widthPx * 10
       });
-      onMove(clip.id, clip.kind, snapped.startMs, snapped.guideMs);
+      setDrag(current => current ? { ...current, previewStartMs: snapped.startMs, guideMs: snapped.guideMs, moved: true } : current);
+      onDragGuide(snapped.guideMs);
     }}
-    onPointerUp={(event) => { event.stopPropagation(); setDrag(null); onDragEnd(); }}
+    onPointerUp={(event) => {
+      event.stopPropagation();
+      if (drag?.moved) onMove(clip.id, clip.kind, drag.previewStartMs, drag.guideMs);
+      setDrag(null); onDragEnd();
+    }}
     onPointerCancel={() => { setDrag(null); onDragEnd(); }}
     onContextMenu={(event) => {
       if (clip.kind === 'missing') return;
       event.preventDefault(); event.stopPropagation();
+      onSelect(clip.id, false);
       setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
     }}>
     {clip.kind !== 'missing' && <svg className="clip-waveform" viewBox={`0 0 ${Math.max(1, visibleWaveform.length)} 100`} preserveAspectRatio="none" aria-hidden="true">
@@ -561,7 +583,7 @@ interface TimelineProps {
   onAutomationChange: (state: AutomationState) => void;
   onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
   onMoveClip: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
-  onRemoveClip: (clip: TimelineClip) => void;
+  onRemoveClips: (clipIds: string[]) => void;
   onFadeChange: (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => void;
   onTabChange: (id: string, patch: Partial<LibraryTab>) => void;
   onDropAsset: (assetId: string, kind: MediaKind, startMs: number) => void;
@@ -571,10 +593,11 @@ interface TimelineProps {
 }
 
 function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences,
-  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
+  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClips, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
+  const [selectedClipIds, setSelectedClipIds] = useState<Set<string>>(() => new Set());
   const canvasRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ contentRatio: number; pointerOffset: number } | null>(null);
@@ -616,6 +639,32 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
     scroll.scrollLeft = anchoredScrollLeft(anchor.contentRatio, anchor.pointerOffset, scroll.scrollWidth, scroll.clientWidth);
     zoomAnchorRef.current = null;
   }, [zoom]);
+
+  useEffect(() => {
+    const available = new Set(arrangement ? [...arrangement.music, ...arrangement.voice].map(clip => clip.id) : []);
+    setSelectedClipIds(current => new Set([...current].filter(id => available.has(id))));
+  }, [arrangement]);
+
+  useEffect(() => {
+    const removeSelected = (event: KeyboardEvent) => {
+      if (event.key !== 'Delete' && event.key !== 'Backspace') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.matches('input, textarea, [contenteditable="true"]')) return;
+      if (!selectedClipIds.size) return;
+      event.preventDefault(); event.stopPropagation();
+      onRemoveClips([...selectedClipIds]);
+      setSelectedClipIds(new Set());
+    };
+    window.addEventListener('keydown', removeSelected, { capture: true });
+    return () => window.removeEventListener('keydown', removeSelected, { capture: true });
+  }, [onRemoveClips, selectedClipIds]);
+
+  const selectClip = (clipId: string, additive: boolean) => setSelectedClipIds(current => {
+    if (!additive) return new Set([clipId]);
+    const next = new Set(current);
+    if (next.has(clipId)) next.delete(clipId); else next.add(clipId);
+    return next;
+  });
 
   return <section className="timeline-section">
     <div className="timeline-toolbar">
@@ -682,6 +731,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
         </div>
         <div className="timeline-scroll" ref={timelineScrollRef}>
           <div ref={canvasRef} className="timeline-canvas" style={{ width: `${width}%` }} onClick={(event) => {
+            setSelectedClipIds(new Set());
             const bounds = event.currentTarget.getBoundingClientRect();
             onSeek((event.clientX - bounds.left) / bounds.width * arrangement.durationMs);
           }} onDragOver={(event) => { if (event.dataTransfer.types.includes('application/x-francis-asset')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; } }}
@@ -701,9 +751,10 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
                 .map(clip => <TimelineClipView key={clip.id} clip={clip}
                   waveform={clip.assetId ? (waveforms.get(clip.assetId) ?? []) : []} overlapping={voiceOverlaps.has(clip.id)}
                   arrangement={arrangement} canvasRef={canvasRef} preferences={editingPreferences}
-                  dimmed={false}
+                  dimmed={false} selected={selectedClipIds.has(clip.id)} onSelect={selectClip}
                   highlighted={false}
-                  onMove={(...args) => { setSnapGuideMs(args[3]); onMoveClip(...args); }} onRemove={onRemoveClip} onFadeChange={onFadeChange}
+                  onMove={onMoveClip} onRemove={(item) => onRemoveClips([item.id])} onFadeChange={onFadeChange}
+                  onDragGuide={setSnapGuideMs}
                   onDragEnd={() => setSnapGuideMs(null)} />)}
               {tab.localAutomationEnabled && <TrackAutomationLane tab={tab}
                 onChange={(automationPoints) => onTabChange(tab.id, { automationPoints })} />}
@@ -926,10 +977,14 @@ export default function App() {
     stopPreview();
     player.reset();
     const next = createArrangement(musicSequence, voiceSequence, nextSettings);
+    const showAutomationTrack = next.voice.length > 0 || editingPreferences.showAutomations;
     setArrangement(next);
     setAutomation({ ...createAutomationState(next, audioSettings),
       displayUnit: editingPreferences.automationDisplayUnit,
-      visible: editingPreferences.showAutomations });
+      visible: showAutomationTrack });
+    if (showAutomationTrack !== editingPreferences.showAutomations) {
+      setEditingPreferences(current => ({ ...current, showAutomations: showAutomationTrack }));
+    }
   };
 
   const mount = () => buildArrangement(settings);
@@ -987,18 +1042,21 @@ export default function App() {
     });
   };
 
-  const removeClip = (clip: TimelineClip) => {
-    player.reset();
+  const removeClips = (clipIds: string[]) => {
+    const ids = new Set(clipIds);
+    player.pause();
     setArrangement(current => {
       if (!current) return current;
-      if (clip.kind === 'music') return {
+      return {
         ...current,
-        music: rebuildMissingMusic(current.music.filter(item => item.id !== clip.id), current.durationMs)
+        music: rebuildMissingMusic(current.music.filter(item => !ids.has(item.id)), current.durationMs),
+        voice: current.voice.filter(item => !ids.has(item.id))
       };
-      if (clip.kind === 'voice') return { ...current, voice: current.voice.filter(item => item.id !== clip.id) };
-      return current;
     });
-    if (clip.kind === 'voice') setAutomation(current => current ? removeAutomationAssignment(current, clip.id) : current);
+    setAutomation(current => current ? {
+      ...current,
+      assignments: current.assignments.filter(item => !ids.has(item.voiceClipId))
+    } : current);
   };
 
   const changeClipFade = (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => {
@@ -1081,7 +1139,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.17.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.18.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1250,7 +1308,7 @@ export default function App() {
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
         onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
-        onMoveClip={moveClip} onRemoveClip={removeClip} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
+        onMoveClip={moveClip} onRemoveClips={removeClips} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
         onPlay={() => { stopPreview(); player.play(); }}
         onPause={player.pause} onSeek={player.seek} />
     </main>

@@ -2,6 +2,25 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.18.0] - 2026-10-31
+
+### Añadido
+
+- Los clips de música y locución pueden seleccionarse con un clic y muestran un contorno luminoso inequívoco.
+- Shift, Control o Comando permiten seleccionar varios clips y Supr/Retroceso los elimina conjuntamente.
+- Los clips admiten foco de teclado y conservan el menú contextual de eliminación y restauración de posición.
+
+### Corregido
+
+- El arrastre utiliza una previsualización local fluida y solo modifica el montaje al soltar, evitando reconstrucciones durante cada píxel de movimiento.
+- Seleccionar un clip sin desplazarlo ya no modifica el montaje ni interrumpe la reproducción.
+- Editar, mover o borrar clips conserva la posición actual del cabezal.
+- Al montar un programa con locuciones, la tercera pista de automatización vuelve a mostrarse aunque un proyecto antiguo tuviera esa preferencia desactivada.
+
+### Cambiado
+
+- Play/Pausa y las flechas quedan centrados dentro del espacio realmente libre entre la información y las herramientas laterales.
+
 ## [0.17.0] - 2026-10-31
 
 ### Añadido

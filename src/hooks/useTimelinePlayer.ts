@@ -251,7 +251,12 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     }, 40);
     return () => window.clearInterval(timer);
   }, [arrangement, isPlaying, mediaClockPosition, stop, syncElements]);
-  useEffect(() => { reset(); }, [arrangement]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!arrangement) { reset(); return; }
+    pause();
+    const clamped = Math.min(positionRef.current, arrangement.durationMs);
+    positionRef.current = clamped; basePositionRef.current = clamped; setPositionMs(clamped);
+  }, [arrangement]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { stopElements(); void graphRef.current?.context.close(); }, [stopElements]);
 
   return { isPlaying, isPreparing, positionMs, musicGainDb, meter, play, pause, stop, reset, seek };
