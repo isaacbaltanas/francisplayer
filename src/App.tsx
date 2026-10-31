@@ -712,6 +712,8 @@ export default function App() {
   const [importLogOpen, setImportLogOpen] = useState(false);
   const [importProgress, setImportProgress] = useState<{ completed: number; total: number } | null>(null);
   const audio = useRef<HTMLAudioElement | null>(null);
+  const previewGeneration = useRef(0);
+  const activePreviewRef = useRef<string | null>(null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const musicSequence = useMemo(() => createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
     activeMusicTabId, musicInsertion, settings.seed), [libraryTabs, music, activeMusicTabId, musicInsertion, settings.seed]);
@@ -733,7 +735,9 @@ export default function App() {
   }, [arrangement]);
 
   useEffect(() => () => {
+    previewGeneration.current += 1;
     audio.current?.pause();
+    audio.current?.removeAttribute('src');
     assetsRef.current.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
   }, []); // URLs are intentionally cleaned only when the app closes.
 
@@ -808,38 +812,67 @@ export default function App() {
     setAutomation(null);
   };
 
+  const stopPreview = () => {
+    previewGeneration.current += 1;
+    const current = audio.current;
+    if (current) {
+      current.pause();
+      current.removeAttribute('src');
+      current.load();
+    }
+    audio.current = null;
+    activePreviewRef.current = null;
+    setActivePreview(null);
+  };
+
   const preview = async (asset: MediaAsset) => {
     player.pause();
-    if (activePreview === asset.id) {
-      audio.current?.pause();
-      setActivePreview(null);
+    if (activePreviewRef.current === asset.id) {
+      stopPreview();
       return;
     }
-    audio.current?.pause();
+    stopPreview();
+    const generation = previewGeneration.current;
+    activePreviewRef.current = asset.id;
+    setActivePreview(asset.id);
     const playUrl = async (url: string) => {
+      if (generation !== previewGeneration.current) return false;
       const next = new Audio(url);
       next.preload = 'auto';
-      next.onended = () => setActivePreview(null);
+      next.onended = () => {
+        if (generation !== previewGeneration.current) return;
+        audio.current = null;
+        activePreviewRef.current = null;
+        setActivePreview(null);
+      };
       audio.current = next;
       next.currentTime = 0;
       await next.play();
+      if (generation !== previewGeneration.current) {
+        next.pause(); next.removeAttribute('src'); next.load();
+        return false;
+      }
+      return true;
     };
     try {
       await playUrl(asset.previewUrl);
-      setActivePreview(asset.id);
     } catch {
       try {
+        if (generation !== previewGeneration.current) return;
         if (!asset.previewUrl.startsWith('francis-media:')) throw new Error('No desktop proxy available');
+        const failed = audio.current;
+        failed?.pause(); failed?.removeAttribute('src'); failed?.load();
         await playUrl(`${asset.previewUrl}&proxy=1`);
-        setActivePreview(asset.id);
       } catch {
-        setActivePreview(null);
+        if (generation !== previewGeneration.current) return;
+        stopPreview();
         setError(t('previewError', { name: asset.name }));
       }
     }
   };
 
   const mount = () => {
+    stopPreview();
     player.stop();
     const next = createArrangement(musicSequence, voiceSequence, settings);
     setArrangement(next);
@@ -985,7 +1018,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.14.2', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.14.3', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1010,7 +1043,7 @@ export default function App() {
       const opened = await window.francisDesktop.openProject(requestedPath);
       if (!opened) return;
       const project = opened.project as ProjectDocument;
-      player.stop(); audio.current?.pause();
+      player.stop(); stopPreview();
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
       setMusic(project.assets.filter(asset => asset.kind === 'music'));
       setVoices(project.assets.filter(asset => asset.kind === 'voice'));
@@ -1028,7 +1061,7 @@ export default function App() {
   };
 
   const newProject = () => {
-    player.stop(); audio.current?.pause();
+    player.stop(); stopPreview();
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
@@ -1139,7 +1172,7 @@ export default function App() {
         onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
         onMoveClip={moveClip} onRemoveClip={removeClip} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
-        onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
+        onPlay={() => { stopPreview(); player.play(); }}
         onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
     </main>
     <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />

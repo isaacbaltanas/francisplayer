@@ -2,6 +2,20 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.14.3] - 2026-10-31
+
+### Corregido
+
+- Play cambia inmediatamente a Stop, incluso mientras se prepara una preescucha convertida.
+- Stop cancela tanto el audio activo como cualquier reproducción o conversión que todavía estuviera pendiente.
+- Los clics rápidos Play–Stop–Play y los cambios entre canciones no pueden dejar reproductores duplicados o sin control.
+- La reproducción de la línea de tiempo invalida las cargas antiguas al pausar, detener, buscar o volver a reproducir.
+- Montar, abrir o crear un proyecto detiene también cualquier preescucha pendiente.
+
+### Cambiado
+
+- La transición visual entre Play y Stop es más inmediata y suave.
+
 ## [0.14.2] - 2026-10-31
 
 ### Añadido

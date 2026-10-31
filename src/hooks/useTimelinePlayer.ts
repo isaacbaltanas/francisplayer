@@ -9,6 +9,7 @@ interface PlayingElement {
   element: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
   gain: GainNode;
+  cancel: () => void;
 }
 
 interface AudioGraph {
@@ -77,9 +78,20 @@ const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: Timeli
   const source = graph.context.createMediaElementSource(element);
   const gain = graph.context.createGain(); gain.gain.value = safeGain(gainValue);
   source.connect(gain).connect(graph.input);
-  const start = () => { element.currentTime = Math.max(0, (positionMs - clip.startMs) / 1000); void element.play().catch(() => undefined); };
+  let cancelled = false;
+  const start = () => {
+    if (cancelled) return;
+    element.currentTime = Math.max(0, (positionMs - clip.startMs) / 1000);
+    void element.play().then(() => { if (cancelled) element.pause(); }).catch(() => undefined);
+  };
   if (element.readyState >= HTMLMediaElement.HAVE_METADATA) start(); else element.addEventListener('loadedmetadata', start, { once: true });
-  return { clipId: clip.id, element, source, gain };
+  const cancel = () => {
+    cancelled = true;
+    element.removeEventListener('loadedmetadata', start);
+    element.pause(); element.removeAttribute('src'); element.load();
+    source.disconnect(); gain.disconnect();
+  };
+  return { clipId: clip.id, element, source, gain, cancel };
 };
 
 export const useTimelinePlayer = (arrangement: Arrangement | null, assets: MediaAsset[], audioSettings: AudioSettings,
@@ -92,6 +104,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const graphRef = useRef<AudioGraph | null>(null);
   const musicRef = useRef<Map<string, PlayingElement>>(new Map());
   const voicesRef = useRef<Map<string, PlayingElement>>(new Map());
+  const playbackGenerationRef = useRef(0);
 
   const ensureGraph = useCallback(async () => {
     if (!graphRef.current) { graphRef.current = await createGraph(setMeter); configureGraph(graphRef.current, audioSettings); }
@@ -102,14 +115,15 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
 
   useEffect(() => { if (graphRef.current) configureGraph(graphRef.current, audioSettings); }, [audioSettings]);
 
-  const dispose = (item: PlayingElement) => { item.element.pause(); item.source.disconnect(); item.gain.disconnect(); };
+  const dispose = (item: PlayingElement) => item.cancel();
   const stopElements = useCallback(() => {
     musicRef.current.forEach(dispose); musicRef.current.clear(); voicesRef.current.forEach(dispose); voicesRef.current.clear();
   }, []);
 
-  const syncElements = useCallback(async (nextPositionMs: number) => {
+  const syncElements = useCallback(async (nextPositionMs: number, generation = playbackGenerationRef.current) => {
     if (!arrangement) return;
     const graph = await ensureGraph();
+    if (generation !== playbackGenerationRef.current) return;
     const assetMap = new Map(assets.map(asset => [asset.id, asset]));
     const nextMusicGainDb = calculateGroupedDuckingDb(nextPositionMs, arrangement.voice, automation, audioSettings);
     const musicVolume = dbToGain(nextMusicGainDb);
@@ -131,23 +145,31 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     sync(arrangement.voice, voicesRef.current, () => dbToGain(audioSettings.voiceGainDb));
   }, [arrangement, assets, audioSettings, automation, ensureGraph, tabs]);
 
-  const pause = useCallback(() => { setIsPlaying(false); musicRef.current.forEach(item => item.element.pause()); voicesRef.current.forEach(item => item.element.pause()); }, []);
+  const pause = useCallback(() => {
+    playbackGenerationRef.current += 1;
+    setIsPlaying(false); musicRef.current.forEach(item => item.element.pause()); voicesRef.current.forEach(item => item.element.pause());
+  }, []);
   const stop = useCallback(() => {
+    playbackGenerationRef.current += 1;
     setIsPlaying(false); stopElements(); positionRef.current = 0; basePositionRef.current = 0; setPositionMs(0); setMusicGainDb(audioSettings.musicGainDb);
     if (graphRef.current?.meter instanceof AudioWorkletNode) graphRef.current.meter.port.postMessage('reset');
     setMeter({ momentary: -120, shortTerm: -120, integrated: -120, peakDbfs: -120 });
   }, [audioSettings.musicGainDb, stopElements]);
   const play = useCallback(() => {
     if (!arrangement) return;
+    playbackGenerationRef.current += 1;
+    const generation = playbackGenerationRef.current;
     if (positionRef.current >= arrangement.durationMs) { positionRef.current = 0; setPositionMs(0); }
     stopElements(); basePositionRef.current = positionRef.current; startedAtRef.current = performance.now();
-    void syncElements(positionRef.current); setIsPlaying(true);
+    void syncElements(positionRef.current, generation); setIsPlaying(true);
   }, [arrangement, stopElements, syncElements]);
   const seek = useCallback((nextPositionMs: number) => {
     if (!arrangement) return;
+    playbackGenerationRef.current += 1;
+    const generation = playbackGenerationRef.current;
     const clamped = Math.min(arrangement.durationMs, Math.max(0, nextPositionMs));
     positionRef.current = clamped; basePositionRef.current = clamped; startedAtRef.current = performance.now(); setPositionMs(clamped); stopElements();
-    if (isPlaying && clamped < arrangement.durationMs) void syncElements(clamped);
+    if (isPlaying && clamped < arrangement.durationMs) void syncElements(clamped, generation);
   }, [arrangement, isPlaying, stopElements, syncElements]);
 
   useEffect(() => {
@@ -155,7 +177,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     const timer = window.setInterval(() => {
       const next = basePositionRef.current + performance.now() - startedAtRef.current;
       if (next >= arrangement.durationMs) { stop(); return; }
-      positionRef.current = next; setPositionMs(next); void syncElements(next);
+      positionRef.current = next; setPositionMs(next); void syncElements(next, playbackGenerationRef.current);
     }, 40);
     return () => window.clearInterval(timer);
   }, [arrangement, isPlaying, stop, syncElements]);
