@@ -264,6 +264,8 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .source-trim-handle { position: absolute; z-index: 6; bottom: -1px; width: 15px; height: 15px; padding: 0; border: 1px solid #8ff3d7; background: #173a32; color: #8ff3d7; border-radius: 4px; font-size: 8px; line-height: 12px; opacity: 0; cursor: ew-resize; }
 .timeline-clip:hover .source-trim-handle, .source-trim-handle:active { opacity: .95; }
 .source-trim-in { left: -2px; }.source-trim-out { right: -2px; }
+.track.overlap-lane { background: linear-gradient(90deg, rgba(79,140,255,.035), transparent 35%); }
+.music-lane-label { color: #75a8ff; font-weight: 800; }
 .timeline-clip.missing { background: repeating-linear-gradient(135deg, #a13c46 0, #a13c46 7px, #7f3039 7px, #7f3039 14px) !important; display: grid; place-items: center; border-color: #d35963; }
 .timeline-clip.missing span { font-weight: 800; letter-spacing: .1em; }
 .timeline-clip.truncated { border-right: 3px solid #ffd082; }

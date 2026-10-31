@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, shuffleWithSeed, voiceScheduleDuration } from '../src/lib/arrangement';
+import { allocateClipLanes, createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, rippleMoveMusicClip, shuffleWithSeed, voiceScheduleDuration } from '../src/lib/arrangement';
 import { calculateDuckingDb, dbToGain, duckingEnvelope } from '../src/lib/audio';
 import {
   calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
@@ -193,5 +193,27 @@ describe('arrangement engine', () => {
     const values = ['a', 'b', 'c', 'd', 'e'];
     expect(shuffleWithSeed(values, 2026)).toEqual(shuffleWithSeed(values, 2026));
     expect(shuffleWithSeed(values, 2026)).not.toEqual(shuffleWithSeed(values, 2027));
+  });
+
+  it('ripples every later clip with a moved song while leaving earlier content fixed', () => {
+    const songs = [asset('m1', 'music', 30_000), asset('m2', 'music', 30_000), asset('m3', 'music', 30_000)];
+    const voices = [asset('v1', 'voice', 3_000), asset('v2', 'voice', 3_000)];
+    const original = createArrangement(songs, voices, { ...settings, targetDurationMs: 100_000, voiceIntervalMs: 30_000, musicFillMode: 'silence' });
+    const second = original.music.find(clip => clip.assetId === 'm2')!;
+    const moved = rippleMoveMusicClip(original, second.id, 20_000, songs, { ...settings, musicFillMode: 'silence' });
+    expect(moved.music.filter(clip => clip.kind === 'music').slice(0, 3).map(clip => clip.startMs)).toEqual([0, 20_000, 50_000]);
+    expect(moved.voice.map(clip => clip.startMs)).toEqual([20_000, 50_000]);
+    expect(allocateClipLanes(moved.music.filter(clip => clip.kind === 'music'))).toHaveLength(2);
+  });
+
+  it('moves only the selected song when Shift isolation is active', () => {
+    const songs = [asset('m1', 'music', 30_000), asset('m2', 'music', 30_000), asset('m3', 'music', 30_000)];
+    const voices = [asset('v1', 'voice', 3_000)];
+    const original = createArrangement(songs, voices, { ...settings, targetDurationMs: 100_000, musicFillMode: 'silence' });
+    const second = original.music.find(clip => clip.assetId === 'm2')!;
+    const moved = rippleMoveMusicClip(original, second.id, 50_000, songs, { ...settings, musicFillMode: 'silence' }, true);
+    expect(moved.music.filter(clip => clip.kind === 'music').slice(0, 3).map(clip => clip.startMs)).toEqual([0, 50_000, 60_000]);
+    expect(moved.voice.map(clip => clip.startMs)).toEqual(original.voice.map(clip => clip.startMs));
+    expect(allocateClipLanes(moved.music.filter(clip => clip.kind === 'music'))).toHaveLength(2);
   });
 });

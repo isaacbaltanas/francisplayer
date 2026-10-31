@@ -208,3 +208,67 @@ export const createArrangement = (
 
   return { durationMs, music, voice, warnings: [...new Set(warnings)] };
 };
+
+export const allocateClipLanes = (clips: TimelineClip[]): TimelineClip[][] => {
+  const lanes: TimelineClip[][] = [];
+  [...clips].sort((left, right) => left.startMs - right.startMs || left.durationMs - right.durationMs).forEach(clip => {
+    const laneIndex = lanes.findIndex(lane => {
+      const last = lane[lane.length - 1];
+      return !last || last.startMs + last.durationMs <= clip.startMs;
+    });
+    if (laneIndex >= 0) lanes[laneIndex].push(clip); else lanes.push([clip]);
+  });
+  return lanes.length ? lanes : [[]];
+};
+
+export const rippleMoveMusicClip = (
+  arrangement: Arrangement,
+  clipId: string,
+  nextStartMs: number,
+  assets: MediaAsset[],
+  settings: ArrangementSettings,
+  isolated = false
+): Arrangement => {
+  const selected = arrangement.music.find(clip => clip.id === clipId && clip.kind === 'music');
+  if (!selected) return arrangement;
+  const anchorMs = selected.startMs;
+  const deltaMs = nextStartMs - anchorMs;
+  if (Math.abs(deltaMs) < 1) return arrangement;
+  const shiftedMusic = arrangement.music.filter(clip => clip.kind === 'music').map(clip => {
+    const affected = isolated ? clip.id === clipId : clip.startMs >= anchorMs;
+    return affected ? { ...clip, startMs: Math.max(0, clip.startMs + deltaMs), manuallyPositioned: true } : clip;
+  });
+  const shiftedVoice = arrangement.voice.map(clip => !isolated && clip.startMs >= anchorMs
+    ? { ...clip, startMs: Math.max(0, clip.startMs + deltaMs), manuallyPositioned: true } : clip);
+  const durationMs = Math.max(arrangement.durationMs,
+    ...shiftedVoice.map(clip => clip.startMs + clip.durationMs));
+  let music = shiftedMusic.filter(clip => clip.startMs < durationMs).map(clip => {
+    const available = durationMs - clip.startMs;
+    if (clip.durationMs <= available) return clip;
+    return { ...clip, durationMs: available, truncated: true, fadeOutMs: Math.min(5_000, available) };
+  });
+
+  if (!isolated) {
+    let cursor = Math.max(0, ...music.map(clip => clip.startMs + clip.durationMs));
+    const fillMode = settings.musicFillMode ?? (settings.repeatMusic ? 'repeat' : 'silence');
+    const candidates = assets.filter(asset => asset.kind === 'music' && asset.durationMs > 0);
+    let cycle = 0;
+    while (cursor < durationMs && candidates.length && fillMode !== 'silence') {
+      const sequence = fillMode === 'random' ? shuffleWithSeed(candidates, settings.seed + 50_000 + cycle) : candidates;
+      for (const asset of sequence) {
+        const remaining = durationMs - cursor;
+        if (remaining <= 0) break;
+        const clip = makeClip(asset, cursor, Math.min(asset.durationMs, remaining));
+        music.push({ ...clip, id: `${clip.id}-ripple-${cycle}`, manuallyPositioned: true });
+        cursor += clip.durationMs;
+      }
+      cycle += 1;
+    }
+  }
+
+  music = rebuildMissingMusic(music, durationMs);
+  const hasMissing = music.some(clip => clip.kind === 'missing');
+  const warnings = arrangement.warnings.filter(warning => warning !== 'missingMusic');
+  if (hasMissing) warnings.push('missingMusic');
+  return { ...arrangement, durationMs, music, voice: shiftedVoice, warnings: [...new Set(warnings)] };
+};
