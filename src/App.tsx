@@ -65,8 +65,8 @@ const defaultEditingPreferences: EditingPreferences = {
   automationDisplayUnit: 'percent',
   showAutomations: true,
   mixEditorMode: 'values',
-  trimSilenceEnabled: false,
-  trimSilenceThresholdDb: -40,
+  trimSilenceEnabled: true,
+  trimSilenceThresholdDb: -30,
   trimSilencePaddingMs: 80,
   trimSilenceMinimumMs: 120
 };
@@ -107,6 +107,23 @@ const snapshotSignature = (snapshot: ProjectSnapshot) => JSON.stringify({
   assets: snapshot.assets.map(({ path: _path, previewUrl: _previewUrl, waveform: _waveform, ...asset }) => asset),
   quarantine: snapshot.quarantine.map(({ path: _path, previewUrl: _previewUrl, ...item }) => item)
 });
+
+const applySilenceBounds = (assets: MediaAsset[], results: Array<{
+  path: string; trimStartMs: number; trimEndMs: number; trimmed: boolean;
+}>) => {
+  const byPath = new Map(results.map(result => [result.path, result]));
+  return assets.map(asset => {
+    const result = byPath.get(asset.path);
+    if (!result) return asset;
+    const sourceDurationMs = asset.sourceDurationMs ?? asset.durationMs;
+    if (!result.trimmed) {
+      const { sourceDurationMs: _sourceDurationMs, trimStartMs: _trimStartMs, trimEndMs: _trimEndMs, ...rest } = asset;
+      return { ...rest, durationMs: sourceDurationMs };
+    }
+    return { ...asset, sourceDurationMs, trimStartMs: result.trimStartMs, trimEndMs: result.trimEndMs,
+      durationMs: Math.max(100, result.trimEndMs - result.trimStartMs) };
+  });
+};
 
 function BrandMark() {
   return <img className="brand-mark" src={appIconUrl} alt="" aria-hidden="true" />;
@@ -1000,6 +1017,7 @@ export default function App() {
     if (!files.length) return;
     setError(null);
     let importJobId: string | undefined;
+    let trimJobId: string | undefined;
     try {
       let assets: MediaAsset[];
       if (window.francisDesktop) {
@@ -1025,6 +1043,25 @@ export default function App() {
         }
         assets = result.assets.map((asset: MediaAsset) => ({ ...asset, libraryTabId: destinationTabId,
           color: tabColors[Math.abs(asset.name.length) % tabColors.length] }));
+        if (kind === 'voice' && editingPreferences.trimSilenceEnabled && assets.length && window.francisDesktop.analyzeSilence) {
+          trimJobId = crypto.randomUUID();
+          setImportProgressJobs(current => [...current, { id: trimJobId!, kind: 'voice',
+            label: t('analyzingSilence'), completed: 0, total: assets.length }]);
+          try {
+            const bounds = await window.francisDesktop.analyzeSilence({
+              jobId: trimJobId,
+              items: assets.map(asset => ({ path: asset.path, durationMs: asset.durationMs })),
+              thresholdDb: editingPreferences.trimSilenceThresholdDb,
+              paddingMs: editingPreferences.trimSilencePaddingMs,
+              minimumSilenceMs: editingPreferences.trimSilenceMinimumMs
+            });
+            assets = applySilenceBounds(assets, bounds);
+          } catch {
+            setError(t('silenceTrimError'));
+          } finally {
+            setImportProgressJobs(current => current.filter(job => job.id !== trimJobId));
+          }
+        }
         setQuarantine(current => [...current, ...result.quarantined]);
         setImportLogs(current => [result.log, ...current]);
         const tab = libraryTabs.find(item => item.id === tabId);
@@ -1038,6 +1075,7 @@ export default function App() {
       setError(t('fileError'));
     } finally {
       if (importJobId) setImportProgressJobs(current => current.filter(job => job.id !== importJobId));
+      if (trimJobId) setImportProgressJobs(current => current.filter(job => job.id !== trimJobId));
     }
   };
 
@@ -1181,18 +1219,7 @@ export default function App() {
         paddingMs: editingPreferences.trimSilencePaddingMs,
         minimumSilenceMs: editingPreferences.trimSilenceMinimumMs
       });
-      const byPath = new Map(results.map(result => [result.path, result]));
-      const nextVoices = voices.map(asset => {
-        const result = byPath.get(asset.path);
-        if (!result) return asset;
-        const sourceDurationMs = asset.sourceDurationMs ?? asset.durationMs;
-        if (!result.trimmed) {
-          const { sourceDurationMs: _sourceDurationMs, trimStartMs: _trimStartMs, trimEndMs: _trimEndMs, ...rest } = asset;
-          return { ...rest, durationMs: sourceDurationMs };
-        }
-        return { ...asset, sourceDurationMs, trimStartMs: result.trimStartMs, trimEndMs: result.trimEndMs,
-          durationMs: Math.max(100, result.trimEndMs - result.trimStartMs) };
-      });
+      const nextVoices = applySilenceBounds(voices, results);
       setVoices(nextVoices); rebuildAfterVoiceEdit(nextVoices);
     } catch {
       setError(t('silenceTrimError'));
@@ -1391,7 +1418,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.23.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.23.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
