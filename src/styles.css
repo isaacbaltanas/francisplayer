@@ -43,11 +43,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .language-switch button { border: 0; background: transparent; color: #767d84; padding: 6px 9px; border-radius: 5px; font-size: 10px; font-weight: 700; cursor: pointer; }
 .language-switch button.active { color: #18130d; background: var(--accent); }
 
-main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); margin: 0 auto; display: grid; grid-template-rows: minmax(0, 56%) minmax(40%, 1fr); gap: 12px; }
+main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); margin: 0 auto; display: grid; grid-template-rows: minmax(0, 56%) minmax(40%, 1fr); gap: 12px; overflow: hidden; }
 .error-banner { background: #472328; border: 1px solid #77323b; color: #ffd6da; padding: 10px 14px; border-radius: 7px; margin-bottom: 16px; display: flex; justify-content: space-between; }
 .error-banner button { border: 0; background: none; cursor: pointer; }
-.workspace-grid { display: grid; grid-template-columns: minmax(650px, 1.5fr) minmax(390px, .82fr); gap: 12px; align-items: stretch; min-height: 0; }
-.library-area { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; }
+.workspace-grid { display: grid; grid-template-columns: minmax(650px, 1.5fr) minmax(390px, .82fr); gap: 12px; align-items: stretch; min-height: 0; overflow: hidden; }
+.library-area { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; min-width: 0; min-height: 0; overflow: hidden; }
 .asset-panel, .settings-panel, .timeline-section { background: linear-gradient(150deg, rgba(28,32,36,.98), rgba(21,24,27,.98)); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 16px 40px rgba(0,0,0,.14); }
 .asset-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px; }
@@ -66,10 +66,10 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .tab-actions button:hover, .tab-actions button.active, .add-tab:hover { color: #ffc16f; background: #3b3329; }
 .tab-actions button:disabled { opacity: .2; cursor: default; }
 .add-tab { flex: none; width: 27px; height: 28px; border: 1px dashed #454c51; }
-.import-actions { display: grid; grid-template-columns: 1fr 40px; gap: 5px; margin: 0 18px; }
+.import-actions { display: grid; grid-template-columns: minmax(0, 1fr) 76px; gap: 5px; margin: 0 18px; }
 .import-button { margin: 0; height: 39px; border: 1px dashed #485057; background: #202429; border-radius: 7px; color: #ccd1d5; cursor: pointer; transition: .18s ease; }
 .import-button:hover { border-color: var(--accent); color: var(--accent-bright); background: #282621; }
-.folder-button { border: 1px dashed #485057; border-radius: 7px; background: #202429; color: #9aa2a8; cursor: pointer; }.folder-button:hover { color: var(--accent); border-color: var(--accent); }
+.folder-button { display: flex; align-items: center; justify-content: center; gap: 5px; border: 1px dashed #485057; border-radius: 7px; background: #202429; color: #9aa2a8; cursor: pointer; }.folder-button b { font-size: 7px; letter-spacing: .06em; }.folder-button:hover { color: var(--accent); border-color: var(--accent); }
 .plus { color: var(--accent); margin-right: 6px; font-size: 18px; vertical-align: -1px; }
 .file-hint { text-align: center; color: #666e75; font-size: 9px; margin: 7px 0 5px; }
 .asset-list { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px 8px; scrollbar-color: #3a4045 transparent; }
@@ -84,8 +84,8 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .preview-button:hover { background: #424a50; color: #ffc16f; }
 .preview-button.active { background: var(--accent); color: #17110a; box-shadow: 0 0 9px #f5a13b66; }
 .remove-button { color: #666d73; opacity: 0; font-size: 18px; }
-.asset-row:hover .remove-button, .asset-row:hover .highlight-button { opacity: 1; }
-.highlight-button { width: 22px; height: 22px; border: 0; border-radius: 50%; background: transparent; color: #697177; opacity: .35; cursor: pointer; }
+.asset-row:hover .remove-button { opacity: 1; }
+.highlight-button { width: 22px; height: 22px; display: grid; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #697177; opacity: .35; cursor: default; }
 .highlight-button.active { opacity: 1; color: #a8ffe7; background: #24453d; box-shadow: 0 0 7px #77fbd477; }
 .occurrence-badge { min-width: 20px; height: 20px; display: grid; place-items: center; border-radius: 10px; background: #24292d; color: #6f777d; font: 8px ui-monospace, monospace; }
 .occurrence-badge.used { background: #584226; color: #ffc174; box-shadow: inset 0 0 0 1px #7b5a2d; }
@@ -98,10 +98,12 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .integrity-warning { color: #ffb965; }
 .asset-info .file-loudness { color: #7fe0c1; font-size: 7px; }
 .asset-footer { min-height: 35px; display: flex; justify-content: space-between; align-items: center; padding: 0 17px; background: #15181a; border-top: 1px solid #282d31; color: #70777d; font-size: 9px; }
-.insertion-logic { min-height: 34px; display: flex; gap: 5px; align-items: center; padding: 4px 9px; border-top: 1px solid #292e32; background: #1a1e21; }
+.insertion-logic { min-height: 40px; display: flex; gap: 5px; align-items: center; padding: 5px 9px; border-top: 1px solid #292e32; background: #1a1e21; }
 .insertion-logic label { flex: 1; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 6px; color: #747d83; font-size: 7px; text-transform: uppercase; letter-spacing: .06em; }
 .insertion-logic select, .insertion-logic input { min-width: 0; height: 25px; border: 1px solid #383f44; border-radius: 4px; background: #141719; color: #adb4b8; font-size: 8px; padding: 0 5px; }
 .insertion-logic input { width: 88px; }
+.add-all-button { flex: none; min-width: 92px; height: 27px; padding: 0 8px; border: 1px solid #8c632f; border-radius: 4px; background: #5a3d20; color: #ffc47d; font-size: 7px; font-weight: 800; letter-spacing: .04em; cursor: pointer; }
+.add-all-button:hover { background: #714d28; color: #ffe0b7; }.add-all-button:disabled { opacity: .3; cursor: not-allowed; }
 
 .settings-panel { padding-bottom: 12px; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
 .settings-title { border-bottom: 1px solid #292e32; padding-bottom: 16px; }

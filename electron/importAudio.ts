@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { spawn } from 'node:child_process';
-import { pathToFileURL } from 'node:url';
+import { mediaUrlForPath } from './mediaUrl.js';
 
 const audioExtensions = new Set(['.mp3', '.wav', '.wave', '.m4a', '.aac', '.flac', '.ogg', '.oga', '.opus', '.aif', '.aiff', '.wma']);
 const disposableTokens = new Set(['final', 'master', 'mix', 'mezcla', 'version', 'versión', 'audio', 'spot', 'cuña', 'promo', 'take', 'toma', 'wav', 'mp3']);
@@ -126,7 +126,7 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
     }
     return finish({ outcome: 'imported', asset: {
       id: `${kind}-${Date.now()}-${index}-${crypto.randomUUID()}`, kind, name: path.basename(filePath, path.extname(filePath)),
-      durationMs: inspected.durationMs, sizeBytes: stat.size, path: filePath, previewUrl: pathToFileURL(filePath).href,
+      durationMs: inspected.durationMs, sizeBytes: stat.size, path: filePath, previewUrl: mediaUrlForPath(filePath),
       color: '#4f8cff', libraryTabId: tabId, waveform: [], fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked', analysis: inspected.analysis
     }, log: { path: filePath, name, outcome: 'imported', detail: verifyIntegrity ? 'Fully decoded and verified' : 'Metadata verified' } });
   });
@@ -142,5 +142,5 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
 
 const quarantine = (kind: string, filePath: string, sizeBytes: number, hash: string, reason: string, detail: string) => ({
   id: `quarantine-${crypto.randomUUID()}`, kind, name: path.basename(filePath), path: filePath,
-  previewUrl: pathToFileURL(filePath).href, sizeBytes, durationMs: 0, fingerprint: hash, reason, detail, importedAt: new Date().toISOString()
+  previewUrl: mediaUrlForPath(filePath), sizeBytes, durationMs: 0, fingerprint: hash, reason, detail, importedAt: new Date().toISOString()
 });

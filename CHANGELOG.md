@@ -2,6 +2,25 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.14.0] - 2026-10-31
+
+### Añadido
+
+- Botón visible «Añadir todo a pista» en las bibliotecas de música y locuciones.
+- Protocolo multimedia interno compatible con desarrollo y aplicación empaquetada para la preescucha de archivos locales.
+- Mensaje claro cuando un archivo ya no está disponible o no se puede reproducir.
+
+### Cambiado
+
+- El botón de carpeta muestra ahora su función mediante texto y mantiene la ayuda contextual.
+- El piloto verde pasa a ser un indicador no pulsable y se activa automáticamente cuando el archivo está presente en la línea de tiempo.
+
+### Corregido
+
+- Las listas largas quedan confinadas dentro de su panel y disponen de desplazamiento propio.
+- Los controles de la fila superior ya no se superponen sobre la cabecera de la línea de tiempo.
+- Los botones de preescucha ya no inician accidentalmente el arrastre de la fila.
+
 ## [0.13.2] - 2026-10-31
 
 ### Corregido

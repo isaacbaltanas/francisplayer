@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, type MenuItemConstructorOptions } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -7,6 +7,11 @@ import ffmpegStatic from 'ffmpeg-static';
 import { readProjectArchive, safeProjectName, writeProjectArchive } from './projectArchive.js';
 import { buildExportPlan, codecArguments, collectProcessResult, parseProgress } from './exportAudio.js';
 import { scanImportPaths } from './importAudio.js';
+import { registerMediaProtocol } from './mediaProtocol.js';
+
+protocol.registerSchemesAsPrivileged([{ scheme: 'francis-media', privileges: {
+  standard: true, secure: true, supportFetchAPI: true, stream: true
+} }]);
 
 let mainWindow: BrowserWindow | null = null;
 let pendingProjectPath: string | null = null;
@@ -174,6 +179,7 @@ app.on('open-file', (event, filePath) => {
 });
 
 app.whenReady().then(async () => {
+  registerMediaProtocol();
   const icon = nativeImage.createFromPath(iconPath);
   if (process.platform === 'darwin' && !icon.isEmpty()) app.dock?.setIcon(icon);
   app.setAboutPanelOptions({

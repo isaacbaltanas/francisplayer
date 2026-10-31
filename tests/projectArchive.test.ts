@@ -40,7 +40,7 @@ describe('.francis project archives', () => {
     const restored = readProjectArchive(projectPath);
     expect(restored.name).toBe('Portable');
     expect(fs.readFileSync(restored.assets[0].path, 'utf8')).toBe('RIFF test audio');
-    expect(restored.assets[0].previewUrl).toMatch(/^file:/);
+    expect(restored.assets[0].previewUrl).toMatch(/^francis-media:/);
     expect(fs.readFileSync(restored.quarantine[0].path, 'utf8')).toBe('damaged but preserved');
   });
 });

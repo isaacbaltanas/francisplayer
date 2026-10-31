@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { mediaUrlForPath } from './mediaUrl.js';
 import AdmZip from 'adm-zip';
 
 export const safeProjectName = (value: string) => value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'Untitled';
@@ -54,7 +54,7 @@ export const readProjectArchive = (projectPath: string) => {
     fs.mkdirSync(path.dirname(destination), { recursive: true });
     fs.writeFileSync(destination, entry.getData());
     item.path = destination;
-    item.previewUrl = pathToFileURL(destination).href;
+    item.previewUrl = mediaUrlForPath(destination);
     delete item.relativePath;
   }
   return manifest;

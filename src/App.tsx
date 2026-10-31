@@ -101,14 +101,13 @@ interface AssetListProps {
   insertion: InsertionConfig;
   activePreview: string | null;
   occurrences: Map<string, number>;
-  highlightedAssetIds: Set<string>;
   allowAssetReuse: boolean;
   showFileLoudness: boolean;
   audioSettings: AudioSettings;
   onFiles: (files: File[], kind: MediaKind, tabId: string) => void;
   onRemove: (id: string) => void;
   onPreview: (asset: MediaAsset) => void;
-  onToggleHighlight: (id: string) => void;
+  onAddAll: () => void;
   onSelectTab: (id: string) => void;
   onAddTab: (kind: MediaKind) => void;
   onRenameTab: (id: string, name: string) => void;
@@ -118,8 +117,8 @@ interface AssetListProps {
   onInsertionChange: (patch: Partial<InsertionConfig>) => void;
 }
 
-function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, occurrences, highlightedAssetIds, allowAssetReuse, showFileLoudness, audioSettings,
-  onFiles, onRemove, onPreview, onToggleHighlight, onSelectTab, onAddTab, onRenameTab, onMoveTab, onRemoveTab,
+function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, occurrences, allowAssetReuse, showFileLoudness, audioSettings,
+  onFiles, onRemove, onPreview, onAddAll, onSelectTab, onAddTab, onRenameTab, onMoveTab, onRemoveTab,
   onToggleLocalAutomation, onInsertionChange }: AssetListProps) {
   const { t, i18n } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
@@ -162,7 +161,9 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
 
     <div className="import-actions"><button className="import-button" onClick={() => input.current?.click()}>
       <span className="plus">＋</span>{t(kind === 'music' ? 'addMusic' : 'addVoice')}
-    </button><button className="folder-button" onClick={() => folderInput.current?.click()} title={t('addFolder')}>▰</button></div>
+    </button><button className="folder-button" onClick={() => folderInput.current?.click()} title={t('addFolder')}>
+      <span aria-hidden="true">▰</span><b>{t('folder')}</b>
+    </button></div>
     <input ref={input} className="visually-hidden" type="file" multiple accept={acceptAudio} onChange={handleInput} />
     <input ref={folderInput} className="visually-hidden" type="file" multiple {...({ webkitdirectory: '' } as object)} onChange={handleInput} />
     <p className="file-hint">{t('dropHint')}</p>
@@ -175,13 +176,14 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
       {visibleAssets.map((asset, index) => {
         const occurrenceCount = occurrences.get(asset.id) ?? 0;
         const locked = !allowAssetReuse && occurrenceCount > 0;
-        const highlighted = highlightedAssetIds.has(asset.id);
-        return <article className={`asset-row ${locked ? 'asset-locked' : ''} ${highlighted ? 'asset-highlighted' : ''}`} key={asset.id}
+        const used = occurrenceCount > 0;
+        return <article className={`asset-row ${locked ? 'asset-locked' : ''} ${used ? 'asset-highlighted' : ''}`} key={asset.id}
           draggable={!locked} onDragStart={(event) => {
             event.dataTransfer.effectAllowed = 'copy';
             event.dataTransfer.setData('application/x-francis-asset', JSON.stringify({ assetId: asset.id, kind: asset.kind }));
           }}>
-        <button className={`preview-button ${activePreview === asset.id ? 'active' : ''}`} onClick={() => onPreview(asset)}
+        <button className={`preview-button ${activePreview === asset.id ? 'active' : ''}`} draggable={false}
+          onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onPreview(asset); }}
           title={t('previewFile')}
           aria-label={t(activePreview === asset.id ? 'pause' : 'play')}>
           {activePreview === asset.id ? '■' : '▶'}
@@ -196,8 +198,9 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
           </span>; })()}
         </div>
         <span className={`occurrence-badge ${occurrenceCount > 0 ? 'used' : ''}`} title={t('timelineOccurrences', { count: occurrenceCount })}>{occurrenceCount}</span>
-        <button className={`highlight-button ${highlighted ? 'active' : ''}`} onClick={() => onToggleHighlight(asset.id)}
-          aria-label={t('highlightOccurrences')}>◉</button>
+        <span className={`highlight-button ${used ? 'active' : ''}`} role="status"
+          title={t(used ? 'assetOnTimeline' : 'assetNotOnTimeline')}
+          aria-label={t(used ? 'assetOnTimeline' : 'assetNotOnTimeline')}>◉</span>
         <button className="remove-button" onClick={() => onRemove(asset.id)} aria-label={t('remove')}>×</button>
       </article>;})}
     </div>
@@ -211,6 +214,7 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
       </select></label>
       {insertion.mode === 'custom' && <input value={insertion.customPattern}
         onChange={(event) => onInsertionChange({ customPattern: event.target.value })} placeholder="1, 2, 1, 3" />}
+      <button className="add-all-button" onClick={onAddAll} disabled={assets.length === 0}>{t('addAllToTimeline')}</button>
     </div>
 
     <footer className="asset-footer">
@@ -543,7 +547,6 @@ interface TimelineProps {
   meter: LoudnessMeterReading;
   automation: AutomationState | null;
   editingPreferences: EditingPreferences;
-  highlightedAssetIds: Set<string>;
   onAutomationChange: (state: AutomationState) => void;
   onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
   onMoveClip: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
@@ -557,7 +560,7 @@ interface TimelineProps {
   onSeek: (positionMs: number) => void;
 }
 
-function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences, highlightedAssetIds,
+function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences,
   onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onStop, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
@@ -636,8 +639,8 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
                 .map(clip => <TimelineClipView key={clip.id} clip={clip}
                   waveform={clip.assetId ? (waveforms.get(clip.assetId) ?? []) : []} overlapping={voiceOverlaps.has(clip.id)}
                   arrangement={arrangement} canvasRef={canvasRef} preferences={editingPreferences}
-                  dimmed={highlightedAssetIds.size > 0 && !highlightedAssetIds.has(clip.assetId ?? '')}
-                  highlighted={highlightedAssetIds.has(clip.assetId ?? '')}
+                  dimmed={false}
+                  highlighted={false}
                   onMove={(...args) => { setSnapGuideMs(args[3]); onMoveClip(...args); }} onRemove={onRemoveClip} onFadeChange={onFadeChange}
                   onDragEnd={() => setSnapGuideMs(null)} />)}
               {tab.localAutomationEnabled && <TrackAutomationLane tab={tab}
@@ -667,7 +670,6 @@ export default function App() {
   const [arrangement, setArrangement] = useState<Arrangement | null>(null);
   const [automation, setAutomation] = useState<AutomationState | null>(null);
   const [editingPreferences, setEditingPreferences] = useState(defaultEditingPreferences);
-  const [highlightedAssetIds, setHighlightedAssetIds] = useState<Set<string>>(new Set());
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState<string | undefined>();
@@ -767,10 +769,9 @@ export default function App() {
     setVoices(current => current.filter(item => item.id !== id));
     setArrangement(null);
     setAutomation(null);
-    setHighlightedAssetIds(current => { const next = new Set(current); next.delete(id); return next; });
   };
 
-  const preview = (asset: MediaAsset) => {
+  const preview = async (asset: MediaAsset) => {
     player.pause();
     if (activePreview === asset.id) {
       audio.current?.pause();
@@ -779,11 +780,18 @@ export default function App() {
     }
     audio.current?.pause();
     const next = new Audio(asset.previewUrl);
+    next.preload = 'auto';
     next.onended = () => setActivePreview(null);
-    next.onerror = () => setActivePreview(null);
+    next.onerror = () => { setActivePreview(null); setError(t('previewError', { name: asset.name })); };
     audio.current = next;
-    void next.play();
-    setActivePreview(asset.id);
+    try {
+      next.currentTime = 0;
+      await next.play();
+      setActivePreview(asset.id);
+    } catch {
+      setActivePreview(null);
+      setError(t('previewError', { name: asset.name }));
+    }
   };
 
   const mount = () => {
@@ -932,7 +940,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.13.2', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.14.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -968,7 +976,7 @@ export default function App() {
       setMusicInsertion(project.musicInsertion); setVoiceInsertion(project.voiceInsertion);
       setArrangement(project.arrangement); setAutomation(project.automation);
       setQuarantine(project.quarantine ?? []); setImportLogs(project.importLogs ?? []);
-      setHighlightedAssetIds(new Set()); setProjectPath(opened.projectPath); setProjectName(project.name);
+      setProjectPath(opened.projectPath); setProjectName(project.name);
     } catch {
       setError(t('projectOpenError'));
     }
@@ -979,7 +987,7 @@ export default function App() {
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
-    setHighlightedAssetIds(new Set()); setQuarantine([]); setImportLogs([]); setProjectPath(undefined); setProjectName(t('untitledProject'));
+    setQuarantine([]); setImportLogs([]); setProjectPath(undefined); setProjectName(t('untitledProject'));
   };
 
   const exportAudio = async (exportSettings: ExportSettings) => {
@@ -1043,10 +1051,9 @@ export default function App() {
         <div className="library-area">
           <AssetList kind="music" assets={music} tabs={libraryTabs.filter(tab => tab.kind === 'music')}
             activeTabId={activeMusicTabId} insertion={musicInsertion} activePreview={activePreview} occurrences={occurrences}
-            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
-            onRemove={removeAsset} onPreview={preview} onToggleHighlight={(id) => setHighlightedAssetIds(current => {
-              const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
-            })} onSelectTab={setActiveMusicTabId} onAddTab={addLibraryTab}
+            allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
+            onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={mount}
+            onSelectTab={setActiveMusicTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
             onToggleLocalAutomation={(id) => {
               const tab = libraryTabs.find(item => item.id === id);
@@ -1058,10 +1065,9 @@ export default function App() {
             onInsertionChange={(patch) => setMusicInsertion(current => ({ ...current, ...patch }))} />
           <AssetList kind="voice" assets={voices} tabs={libraryTabs.filter(tab => tab.kind === 'voice')}
             activeTabId={activeVoiceTabId} insertion={voiceInsertion} activePreview={activePreview} occurrences={occurrences}
-            highlightedAssetIds={highlightedAssetIds} allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
-            onRemove={removeAsset} onPreview={preview} onToggleHighlight={(id) => setHighlightedAssetIds(current => {
-              const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next;
-            })} onSelectTab={setActiveVoiceTabId} onAddTab={addLibraryTab}
+            allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
+            onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={mount}
+            onSelectTab={setActiveVoiceTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
             onToggleLocalAutomation={(id) => {
               const tab = libraryTabs.find(item => item.id === id);
@@ -1086,7 +1092,7 @@ export default function App() {
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
-        highlightedAssetIds={highlightedAssetIds} onAutomationChange={setAutomation}
+        onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
         onMoveClip={moveClip} onRemoveClip={removeClip} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
         onPlay={() => { audio.current?.pause(); setActivePreview(null); player.play(); }}
