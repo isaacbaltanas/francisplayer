@@ -2,7 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 
 let pendingProjectPath: string | null = null;
 const openCallbacks = new Set<(projectPath: string) => void>();
-type MenuCommand = 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export';
+type MenuCommand = 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export' | 'undo' | 'redo';
 const menuCallbacks = new Set<(command: MenuCommand) => void>();
 ipcRenderer.on('project:open-requested', (_event, projectPath: string) => {
   if (openCallbacks.size === 0) pendingProjectPath = projectPath;
@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld('francisDesktop', {
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   saveProject: (payload: unknown, projectPath?: string) => ipcRenderer.invoke('project:save', payload, projectPath),
   openProject: (projectPath?: string) => ipcRenderer.invoke('project:open', projectPath),
+  confirmUnsavedChanges: (language: string) => ipcRenderer.invoke('project:confirm-unsaved', language),
   onOpenProject: (callback: (projectPath: string) => void) => {
     openCallbacks.add(callback);
     if (pendingProjectPath) { const next = pendingProjectPath; pendingProjectPath = null; queueMicrotask(() => callback(next)); }

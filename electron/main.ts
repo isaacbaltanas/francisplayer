@@ -3,8 +3,9 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { Worker } from 'node:worker_threads';
 import ffmpegStatic from 'ffmpeg-static';
-import { readProjectArchive, safeProjectName, writeProjectArchive } from './projectArchive.js';
+import { readProjectArchive, safeProjectName } from './projectArchive.js';
 import { buildExportPlan, codecArguments, collectProcessResult, parseProgress } from './exportAudio.js';
 import { generateWaveforms, scanImportPaths } from './importAudio.js';
 import { preparePreviewProxy, registerMediaProtocol } from './mediaProtocol.js';
@@ -21,7 +22,7 @@ const iconPath = path.join(__dirname, '..', 'assets', 'icon.png');
 app.setName('Francis Player');
 app.setAppUserModelId('com.francisplayer.app');
 
-type MenuCommand = 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export';
+type MenuCommand = 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export' | 'undo' | 'redo';
 const sendMenuCommand = (command: MenuCommand) => mainWindow?.webContents.send('menu:command', command);
 const installApplicationMenu = () => {
   const fileMenu: MenuItemConstructorOptions = {
@@ -42,7 +43,9 @@ const installApplicationMenu = () => {
     ]
   };
   const template: MenuItemConstructorOptions[] = [fileMenu,
-    { label: 'Edición', submenu: [{ role: 'undo', label: 'Deshacer' }, { role: 'redo', label: 'Rehacer' }, { type: 'separator' },
+    { label: 'Edición', submenu: [
+      { label: 'Deshacer', accelerator: 'CmdOrCtrl+Z', click: () => sendMenuCommand('undo') },
+      { label: 'Rehacer', accelerator: 'CmdOrCtrl+Shift+Z', click: () => sendMenuCommand('redo') }, { type: 'separator' },
       { role: 'cut', label: 'Cortar' }, { role: 'copy', label: 'Copiar' }, { role: 'paste', label: 'Pegar' }, { role: 'selectAll', label: 'Seleccionar todo' }] },
     { label: 'Visualización', submenu: [{ role: 'reload', label: 'Recargar' }, { role: 'togglefullscreen', label: 'Pantalla completa' }] },
     { label: 'Ventana', submenu: [{ role: 'minimize', label: 'Minimizar' }, { role: 'zoom', label: 'Zoom' }, { role: 'front', label: 'Traer todo al frente' }] }
@@ -66,7 +69,16 @@ const saveProject = async (payload: any, requestedPath?: string) => {
     projectPath = result.filePath.endsWith('.francis') ? result.filePath : `${result.filePath}.francis`;
   }
 
-  writeProjectArchive(payload, projectPath);
+  await new Promise<void>((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'projectArchiveWorker.js'));
+    const finish = () => { void worker.terminate(); };
+    worker.once('message', (result: { ok: boolean; error?: string }) => {
+      finish();
+      if (result.ok) resolve(); else reject(new Error(result.error || 'Project save failed'));
+    });
+    worker.once('error', error => { finish(); reject(error); });
+    worker.postMessage({ payload, projectPath });
+  });
   return projectPath;
 };
 
@@ -123,6 +135,18 @@ const createWindow = async () => {
 
 ipcMain.handle('project:save', (_event, payload, requestedPath?: string) => saveProject(payload, requestedPath));
 ipcMain.handle('project:open', (_event, requestedPath?: string) => openProject(requestedPath));
+ipcMain.handle('project:confirm-unsaved', async (_event, language: string) => {
+  const english = language?.toLowerCase().startsWith('en');
+  const result = await dialog.showMessageBox(mainWindow!, {
+    type: 'warning', title: english ? 'Unsaved changes' : 'Cambios sin guardar',
+    message: english ? 'Do you want to save the changes to this project?' : '¿Quieres guardar los cambios de este proyecto?',
+    detail: english ? 'If you discard the changes, you will not be able to recover them from this project.'
+      : 'Si descartas los cambios, no podrás recuperarlos desde este proyecto.',
+    buttons: english ? ['Save', 'Discard', 'Cancel'] : ['Guardar', 'Descartar', 'Cancelar'],
+    defaultId: 0, cancelId: 2, noLink: true
+  });
+  return (['save', 'discard', 'cancel'] as const)[result.response] ?? 'cancel';
+});
 ipcMain.handle('media:import-paths', async (event, request: any) => {
   if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');
   const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;

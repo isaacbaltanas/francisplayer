@@ -75,7 +75,7 @@ const initialTabs: LibraryTab[] = [
 ];
 const defaultInsertion: InsertionConfig = { mode: 'all', customPattern: '1, 2, 1, 3' };
 
-interface ProjectDocument {
+interface ProjectSnapshot {
   name: string;
   version: string;
   settings: ArrangementSettings;
@@ -92,6 +92,17 @@ interface ProjectDocument {
   quarantine: QuarantineItem[];
   importLogs: ImportLog[];
 }
+
+interface ProjectDocument extends ProjectSnapshot {
+  history?: { entries: ProjectSnapshot[]; index: number };
+}
+
+const snapshotSignature = (snapshot: ProjectSnapshot) => JSON.stringify({
+  ...snapshot,
+  name: undefined,
+  assets: snapshot.assets.map(({ path: _path, previewUrl: _previewUrl, waveform: _waveform, ...asset }) => asset),
+  quarantine: snapshot.quarantine.map(({ path: _path, previewUrl: _previewUrl, ...item }) => item)
+});
 
 function BrandMark() {
   return <img className="brand-mark" src={appIconUrl} alt="" aria-hidden="true" />;
@@ -798,6 +809,9 @@ export default function App() {
   const [importLogs, setImportLogs] = useState<ImportLog[]>([]);
   const [quarantineOpen, setQuarantineOpen] = useState(false);
   const [importLogOpen, setImportLogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [, setHistoryRevision] = useState(0);
   const [importProgressJobs, setImportProgressJobs] = useState<Array<{
     id: string; kind?: MediaKind; label: string; completed: number; total: number;
   }>>([]);
@@ -805,6 +819,11 @@ export default function App() {
   const previewGeneration = useRef(0);
   const activePreviewRef = useRef<string | null>(null);
   const waveformHydrationGeneration = useRef(0);
+  const historyRef = useRef<ProjectSnapshot[]>([]);
+  const historyIndexRef = useRef(-1);
+  const historyReadyRef = useRef(false);
+  const applyingHistoryRef = useRef(false);
+  const savedSignatureRef = useRef('');
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const musicSequence = useMemo(() => createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
     activeMusicTabId, musicInsertion, settings.seed), [libraryTabs, music, activeMusicTabId, musicInsertion, settings.seed]);
@@ -906,8 +925,6 @@ export default function App() {
   };
 
   const removeAsset = (id: string) => {
-    const asset = allAssets.find(item => item.id === id);
-    if (asset) URL.revokeObjectURL(asset.previewUrl);
     setMusic(current => current.filter(item => item.id !== id));
     setVoices(current => current.filter(item => item.id !== id));
     setArrangement(null);
@@ -1148,8 +1165,6 @@ export default function App() {
   const removeLibraryTab = (id: string) => {
     const tab = libraryTabs.find(item => item.id === id);
     if (!tab || libraryTabs.filter(item => item.kind === tab.kind).length <= 1) return;
-    const removedAssets = allAssets.filter(asset => asset.libraryTabId === id);
-    removedAssets.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     if (tab.kind === 'music') setMusic(current => current.filter(asset => asset.libraryTabId !== id));
     else setVoices(current => current.filter(asset => asset.libraryTabId !== id));
     const remaining = libraryTabs.filter(item => item.kind === tab.kind && item.id !== id);
@@ -1158,46 +1173,120 @@ export default function App() {
     setArrangement(null); setAutomation(null);
   };
 
-  const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.20.0', settings, audioSettings, editingPreferences, libraryTabs,
+  const currentSnapshot = (): ProjectSnapshot => ({
+    name: projectName, version: '0.21.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
 
-  const saveProject = async (saveAs = false) => {
-    if (!window.francisDesktop) return;
+  const normalizeSnapshot = (snapshot: ProjectSnapshot): ProjectSnapshot => ({
+    ...snapshot,
+    settings: { ...defaultSettings, ...snapshot.settings,
+      musicFillMode: snapshot.settings?.musicFillMode ?? (snapshot.settings?.repeatMusic ? 'repeat' : 'silence') },
+    audioSettings: { ...defaultAudioSettings, ...snapshot.audioSettings },
+    editingPreferences: { ...defaultEditingPreferences, ...snapshot.editingPreferences },
+    libraryTabs: snapshot.libraryTabs ?? initialTabs,
+    musicInsertion: snapshot.musicInsertion ?? defaultInsertion,
+    voiceInsertion: snapshot.voiceInsertion ?? defaultInsertion,
+    assets: (snapshot.assets ?? []).map(asset => ({ ...asset, waveform: asset.waveform ?? [] })),
+    quarantine: snapshot.quarantine ?? [], importLogs: snapshot.importLogs ?? []
+  });
+
+  const applySnapshot = (rawSnapshot: ProjectSnapshot) => {
+    const snapshot = normalizeSnapshot(rawSnapshot);
+    applyingHistoryRef.current = true;
+    player.reset(); stopPreview();
+    setMusic(snapshot.assets.filter(asset => asset.kind === 'music'));
+    setVoices(snapshot.assets.filter(asset => asset.kind === 'voice'));
+    setSettings(snapshot.settings); setAudioSettings(snapshot.audioSettings); setEditingPreferences(snapshot.editingPreferences);
+    setLibraryTabs(snapshot.libraryTabs); setActiveMusicTabId(snapshot.activeMusicTabId); setActiveVoiceTabId(snapshot.activeVoiceTabId);
+    setMusicInsertion(snapshot.musicInsertion); setVoiceInsertion(snapshot.voiceInsertion);
+    setArrangement(snapshot.arrangement); setAutomation(snapshot.automation);
+    setQuarantine(snapshot.quarantine); setImportLogs(snapshot.importLogs);
+  };
+
+  const undoProject = () => {
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current -= 1;
+    applySnapshot(historyRef.current[historyIndexRef.current]);
+    setIsDirty(snapshotSignature(historyRef.current[historyIndexRef.current]) !== savedSignatureRef.current);
+    setHistoryRevision(value => value + 1);
+  };
+
+  const redoProject = () => {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current += 1;
+    applySnapshot(historyRef.current[historyIndexRef.current]);
+    setIsDirty(snapshotSignature(historyRef.current[historyIndexRef.current]) !== savedSignatureRef.current);
+    setHistoryRevision(value => value + 1);
+  };
+
+  const projectDocument = (): ProjectDocument => {
+    const snapshot = currentSnapshot();
+    const entries = [...historyRef.current];
+    if (historyIndexRef.current >= 0) entries[historyIndexRef.current] = snapshot;
+    return { ...snapshot, history: { entries, index: historyIndexRef.current } };
+  };
+
+  const saveProject = async (saveAs = false): Promise<boolean> => {
+    if (!window.francisDesktop || isSaving) return false;
+    setIsSaving(true);
     try {
-      const savedPath = await window.francisDesktop.saveProject(projectDocument(), saveAs ? undefined : projectPath);
+      const document = projectDocument();
+      const savedPath = await window.francisDesktop.saveProject(document, saveAs ? undefined : projectPath);
       if (savedPath) {
         setProjectPath(savedPath);
         const fileName = savedPath.split(/[\\/]/).pop()?.replace(/\.francis$/i, '');
         if (fileName) setProjectName(fileName);
+        savedSignatureRef.current = snapshotSignature(document);
+        setIsDirty(false);
+        return true;
       }
+      return false;
     } catch {
       setError(t('projectSaveError'));
+      return false;
+    } finally {
+      setIsSaving(false);
     }
+  };
+
+  const confirmCanReplaceProject = async () => {
+    if (!isDirty) return true;
+    const choice = await window.francisDesktop?.confirmUnsavedChanges(i18n.language);
+    if (choice === 'discard') return true;
+    if (choice === 'save') return saveProject(false);
+    return false;
   };
 
   const openProject = async (requestedPath?: string) => {
     if (!window.francisDesktop) return;
     try {
+      if (!await confirmCanReplaceProject()) return;
       const opened = await window.francisDesktop.openProject(requestedPath);
       if (!opened) return;
       const project = opened.project as ProjectDocument;
-      const projectAssets = project.assets.map(asset => ({ ...asset, waveform: asset.waveform ?? [] }));
+      const openedSnapshot = normalizeSnapshot(project);
+      const projectAssets = openedSnapshot.assets;
       const hydrationGeneration = ++waveformHydrationGeneration.current;
       player.reset(); stopPreview();
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
       setMusic(projectAssets.filter(asset => asset.kind === 'music'));
       setVoices(projectAssets.filter(asset => asset.kind === 'voice'));
-      setSettings({ ...defaultSettings, ...project.settings,
-        musicFillMode: project.settings.musicFillMode ?? (project.settings.repeatMusic ? 'repeat' : 'silence') });
-      setAudioSettings({ ...defaultAudioSettings, ...project.audioSettings }); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
-      setLibraryTabs(project.libraryTabs); setActiveMusicTabId(project.activeMusicTabId); setActiveVoiceTabId(project.activeVoiceTabId);
-      setMusicInsertion(project.musicInsertion); setVoiceInsertion(project.voiceInsertion);
-      setArrangement(project.arrangement); setAutomation(project.automation);
-      setQuarantine(project.quarantine ?? []); setImportLogs(project.importLogs ?? []);
+      setSettings(openedSnapshot.settings); setAudioSettings(openedSnapshot.audioSettings); setEditingPreferences(openedSnapshot.editingPreferences);
+      setLibraryTabs(openedSnapshot.libraryTabs); setActiveMusicTabId(openedSnapshot.activeMusicTabId); setActiveVoiceTabId(openedSnapshot.activeVoiceTabId);
+      setMusicInsertion(openedSnapshot.musicInsertion); setVoiceInsertion(openedSnapshot.voiceInsertion);
+      setArrangement(openedSnapshot.arrangement); setAutomation(openedSnapshot.automation);
+      setQuarantine(openedSnapshot.quarantine); setImportLogs(openedSnapshot.importLogs);
       setProjectPath(opened.projectPath); setProjectName(project.name);
+      const restoredEntries = project.history?.entries?.length
+        ? project.history.entries.map(normalizeSnapshot) : [openedSnapshot];
+      const restoredIndex = Math.max(0, Math.min(project.history?.index ?? restoredEntries.length - 1, restoredEntries.length - 1));
+      restoredEntries[restoredIndex] = openedSnapshot;
+      historyRef.current = restoredEntries; historyIndexRef.current = restoredIndex;
+      historyReadyRef.current = true; applyingHistoryRef.current = true;
+      savedSignatureRef.current = snapshotSignature(openedSnapshot); setIsDirty(false);
+      setHistoryRevision(value => value + 1);
       if (window.francisDesktop?.preparePreviews) void window.francisDesktop.preparePreviews(projectAssets.map(asset => asset.path)).catch(() => undefined);
       const missingWaveforms = projectAssets.filter(asset => asset.waveform.length < 2048);
       if (missingWaveforms.length && window.francisDesktop?.generateWaveforms) {
@@ -1221,13 +1310,22 @@ export default function App() {
     }
   };
 
-  const newProject = () => {
+  const clearProject = () => {
     waveformHydrationGeneration.current += 1;
     player.reset(); stopPreview();
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
     setQuarantine([]); setImportLogs([]); setProjectPath(undefined); setProjectName(t('untitledProject'));
+    setSettings(defaultSettings); setAudioSettings(defaultAudioSettings); setEditingPreferences(defaultEditingPreferences);
+    setMusicInsertion(defaultInsertion); setVoiceInsertion(defaultInsertion);
+    historyRef.current = []; historyIndexRef.current = -1; historyReadyRef.current = false;
+    applyingHistoryRef.current = false; savedSignatureRef.current = ''; setIsDirty(false);
+    setHistoryRevision(value => value + 1);
+  };
+
+  const newProject = async () => {
+    if (await confirmCanReplaceProject()) clearProject();
   };
 
   const exportAudio = async (exportSettings: ExportSettings) => {
@@ -1264,12 +1362,35 @@ export default function App() {
   };
 
   useEffect(() => {
+    const snapshot = currentSnapshot();
+    const signature = snapshotSignature(snapshot);
+    if (!historyReadyRef.current) {
+      historyRef.current = [snapshot]; historyIndexRef.current = 0; historyReadyRef.current = true;
+      savedSignatureRef.current = signature; setIsDirty(false); setHistoryRevision(value => value + 1);
+      return;
+    }
+    if (applyingHistoryRef.current) {
+      applyingHistoryRef.current = false;
+      return;
+    }
+    const current = historyRef.current[historyIndexRef.current];
+    if (current && snapshotSignature(current) === signature) return;
+    historyRef.current = [...historyRef.current.slice(0, historyIndexRef.current + 1), snapshot];
+    historyIndexRef.current = historyRef.current.length - 1;
+    setIsDirty(signature !== savedSignatureRef.current);
+    setHistoryRevision(value => value + 1);
+  }, [settings, audioSettings, editingPreferences, libraryTabs, activeMusicTabId, activeVoiceTabId,
+    musicInsertion, voiceInsertion, arrangement, automation, allAssets, quarantine, importLogs]);
+
+  useEffect(() => {
     const removeListener = window.francisDesktop?.onOpenProject(path => { void openProject(path); });
     const removeMenuListener = window.francisDesktop?.onMenuCommand(command => {
-      if (command === 'new') newProject();
+      if (command === 'new') void newProject();
       if (command === 'open') void openProject();
       if (command === 'save') void saveProject(false);
       if (command === 'saveAs') void saveProject(true);
+      if (command === 'undo') undoProject();
+      if (command === 'redo') redoProject();
       if (command === 'quarantine') setQuarantineOpen(true);
       if (command === 'importLog') setImportLogOpen(true);
       if (command === 'export' && arrangement) setExportOpen(true);
@@ -1280,12 +1401,12 @@ export default function App() {
   return <div className="app-shell">
     <header className="topbar">
       <div className="brand"><BrandMark /><div><h1>Francis Player</h1><p>{t('appSubtitle')}</p></div></div>
-      <div className="project-state"><span className="draft-pill">{projectPath ? t('statusSaved') : t('statusDraft')}</span><div><strong>{projectName}</strong><small>{status}</small></div></div>
+      <div className="project-state"><span className="draft-pill">{t(isSaving ? 'statusSaving' : isDirty ? 'statusDirty' : projectPath ? 'statusSaved' : 'statusDraft')}</span><div><strong>{projectName}</strong><small>{status}</small></div></div>
       <nav className="project-actions">
-        <button onClick={newProject} title={t('newProjectAction')}>＋</button>
-        <button onClick={() => void openProject()} title={`${t('openProject')} · Ctrl/⌘O`}>⌂</button>
-        <button onClick={() => void saveProject(false)} title={`${t('saveProject')} · Ctrl/⌘S`}>▣</button>
-        <button onClick={() => void saveProject(true)} title={t('saveProjectAs')}>▣＋</button>
+        <button onClick={() => void newProject()} disabled={isSaving} title={t('newProjectAction')}>＋</button>
+        <button onClick={() => void openProject()} disabled={isSaving} title={`${t('openProject')} · Ctrl/⌘O`}>⌂</button>
+        <button onClick={() => void saveProject(false)} disabled={isSaving} title={`${t('saveProject')} · Ctrl/⌘S`}>▣</button>
+        <button onClick={() => void saveProject(true)} disabled={isSaving} title={t('saveProjectAs')}>▣＋</button>
         <button className={quarantine.length ? 'attention' : ''} onClick={() => setQuarantineOpen(true)} title={t('quarantine')}>Q {quarantine.length}</button>
         <button onClick={() => setImportLogOpen(true)} title={t('importLog')}>☷ {importLogs.length}</button>
         <button className="export-nav" onClick={() => setExportOpen(true)} disabled={!arrangement} title={t('exportMix')}>{t('export')}</button>
