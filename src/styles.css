@@ -106,7 +106,8 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .asset-footer { min-height: 35px; display: flex; justify-content: space-between; align-items: center; padding: 0 17px; background: #15181a; border-top: 1px solid #282d31; color: #70777d; font-size: 9px; }
 .insertion-logic { min-height: 40px; display: flex; gap: 5px; align-items: center; padding: 5px 9px; border-top: 1px solid #292e32; background: #1a1e21; }
 .insertion-logic label { flex: 1; display: grid; grid-template-columns: auto minmax(0,1fr); align-items: center; gap: 6px; color: #747d83; font-size: 7px; text-transform: uppercase; letter-spacing: .06em; }
-.insertion-logic select, .insertion-logic input { min-width: 0; height: 25px; border: 1px solid #383f44; border-radius: 4px; background: #141719; color: #adb4b8; font-size: 8px; padding: 0 5px; }
+.insertion-logic select, .insertion-logic input { min-width: 0; height: 25px; box-sizing: border-box; border: 1px solid #383f44; border-radius: 4px; background-color: #141719; color: #adb4b8; font-size: 8px; padding: 0 5px; }
+.insertion-logic select { padding: 0 34px 0 10px; appearance: none; background-image: linear-gradient(45deg, transparent 50%, #aab2b7 50%), linear-gradient(135deg, #aab2b7 50%, transparent 50%); background-position: calc(100% - 18px) 10px, calc(100% - 14px) 10px; background-size: 4px 4px, 4px 4px; background-repeat: no-repeat; }
 .insertion-logic input { width: 88px; }
 .add-all-button { flex: none; min-width: 92px; height: 27px; padding: 0 8px; border: 1px solid #8c632f; border-radius: 4px; background: #5a3d20; color: #ffc47d; font-size: 7px; font-weight: 800; letter-spacing: .04em; cursor: pointer; }
 .add-all-button:hover { background: #714d28; color: #ffe0b7; }.add-all-button:disabled { opacity: .3; cursor: not-allowed; }
@@ -120,6 +121,10 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 10px; padding: 11px 16px; overflow: auto; min-height: 0; flex: 1; align-content: start; }
 .field { display: grid; gap: 7px; color: #9da4aa; font-size: 9px; }
 .field > span, .toggle-field > span { text-transform: uppercase; letter-spacing: .08em; font-weight: 700; }
+.field-label { min-width: 0; display: inline-flex; align-items: center; gap: 6px; }
+.info-hint { flex: none; width: 13px; height: 13px; display: inline-grid; place-items: center; box-sizing: border-box; border: 1px solid #596268; border-radius: 50%; color: #9ca5aa; font: 8px/1 ui-monospace, monospace; font-style: normal; text-transform: none; letter-spacing: 0; cursor: help; transition: color .12s, border-color .12s, background .12s; }
+.info-hint:hover, .info-hint:focus-visible { outline: none; border-color: #e7a555; background: #3a2d20; color: #ffc374; }
+.info-tooltip { position: fixed; z-index: 1000; width: 280px; box-sizing: border-box; padding: 11px 12px; border: 1px solid #596268; border-radius: 7px; background: #242a2e; color: #d8dddf; box-shadow: 0 12px 34px #000c; font-size: 10px; line-height: 1.5; text-transform: none; letter-spacing: 0; pointer-events: none; }
 .field.full { grid-column: 1 / -1; }
 .settings-grid > .full, .automation-settings > .full { grid-column: 1 / -1; }
 .mount-priorities { padding: 9px 11px; border: 1px solid #343b40; border-radius: 7px; background: #171b1d; color: #8f989e; font-size: 8px; line-height: 1.45; }

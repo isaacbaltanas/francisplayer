@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { allocateClipLanes, createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, rippleMoveMusicClip, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
@@ -79,6 +80,28 @@ const initialTabs: LibraryTab[] = [
 ];
 const defaultMusicInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
 const defaultVoiceInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
+
+function InfoHint({ text }: { text: string }) {
+  const id = useId();
+  const ref = useRef<HTMLSpanElement>(null);
+  const [position, setPosition] = useState<{ left: number; top: number } | null>(null);
+  const show = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect) return;
+    setPosition({ left: Math.max(12, Math.min(window.innerWidth - 292, rect.left + rect.width / 2 - 140)),
+      top: Math.max(12, Math.min(window.innerHeight - 180, rect.bottom + 8)) });
+  };
+  return <><span ref={ref} className="info-hint" role="button" tabIndex={0} aria-describedby={position ? id : undefined}
+    onMouseEnter={show} onMouseLeave={() => setPosition(null)} onFocus={show} onBlur={() => setPosition(null)}
+    onPointerDown={(event) => { event.preventDefault(); event.stopPropagation(); }}
+    onClick={(event) => { event.preventDefault(); event.stopPropagation(); show(); }}
+    onKeyDown={(event) => { if (event.key === 'Escape') setPosition(null); }}>i</span>
+    {position && createPortal(<div id={id} className="info-tooltip" role="tooltip" style={position}>{text}</div>, document.body)}</>;
+}
+
+function FieldLabel({ children, help }: { children: React.ReactNode; help?: string }) {
+  return <span className="field-label">{children}{help && <InfoHint text={help} />}</span>;
+}
 
 interface ProjectSnapshot {
   name: string;
@@ -260,7 +283,7 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
     </div>
 
     <div className="insertion-logic">
-      <label><span>{t('insertionLogic')}</span><select value={insertion.mode}
+      <label><FieldLabel help={t('insertionLogicHelp')}>{t('insertionLogic')}</FieldLabel><select value={insertion.mode}
         onChange={(event) => onInsertionChange({ mode: event.target.value as InsertionConfig['mode'], userSelected: true })}>
         <option value="balanced">{t('insertBalanced')}</option><option value="active">{t('insertActive')}</option><option value="all">{t('insertAll')}</option>
         <option value="roundRobin">{t('insertRoundRobin')}</option><option value="random">{t('insertRandom')}</option>
@@ -322,12 +345,12 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
 
     <div className="settings-tabs">
       {(['arrangement', 'audio', 'automation', 'editing'] as const).map(item => <button key={item}
-        className={tab === item ? 'active' : ''} onClick={() => setTab(item)}>{t(`settingsTab_${item}`)}</button>)}
+        className={tab === item ? 'active' : ''} title={t(`settingsTab_${item}Help`)} onClick={() => setTab(item)}>{t(`settingsTab_${item}`)}</button>)}
     </div>
 
     {tab === 'arrangement' && <div className="settings-grid">
       <label className="field full">
-        <span>{t('targetDuration')}</span>
+        <FieldLabel help={t('targetDurationHelp')}>{t('targetDuration')}</FieldLabel>
         <div className="linked-range"><input type="range" min="1" max={targetSliderMax} step="1" value={targetMinutes}
           onChange={(event) => changeTarget(Math.max(1, Math.round(Number(event.target.value))) * 60_000)} />
         <div className="number-field"><input type="number" min="1" max={targetSliderMax} step="1" value={targetMinutes}
@@ -336,30 +359,30 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         </div>
       </label>
 
-      <Toggle label={t('durationFromVoices')} checked={settings.durationFromVoices ?? false} onChange={(durationFromVoices) => onChange({
+      <Toggle label={t('durationFromVoices')} help={t('durationFromVoicesHelp')} checked={settings.durationFromVoices ?? false} onChange={(durationFromVoices) => onChange({
         durationFromVoices,
         ...(durationFromVoices ? { voicePlacement: 'interval' as const } : {}),
         ...(durationFromVoices && voiceAssets.length ? { targetDurationMs: voiceScheduleDuration(voiceAssets, settings.voiceIntervalMs, settings.allowVoiceOverlap) } : {})
       })} />
 
-      <Segmented label={t('musicOrder')} value={settings.musicOrder} options={[
+      <Segmented label={t('musicOrder')} help={t('musicOrderHelp')} value={settings.musicOrder} options={[
         ['sequential', t('sequential')], ['random', t('random')]
       ]} onChange={(value) => onChange({ musicOrder: value as ArrangementSettings['musicOrder'] })} />
 
-      <Segmented label={t('voiceOrder')} value={settings.voiceOrder} options={[
+      <Segmented label={t('voiceOrder')} help={t('voiceOrderHelp')} value={settings.voiceOrder} options={[
         ['sequential', t('sequential')], ['random', t('random')]
       ]} onChange={(value) => onChange({ voiceOrder: value as ArrangementSettings['voiceOrder'] })} />
 
-      <Segmented label={t('musicFill')} value={settings.musicFillMode ?? (settings.repeatMusic ? 'repeat' : 'silence')} full options={[
+      <Segmented label={t('musicFill')} help={t('musicFillHelp')} value={settings.musicFillMode ?? (settings.repeatMusic ? 'repeat' : 'silence')} full options={[
         ['silence', t('doNotFill')], ['repeat', t('fillRepeating')], ['random', t('fillRandom')]
       ]} onChange={(value) => onChange({ musicFillMode: value as NonNullable<ArrangementSettings['musicFillMode']>, repeatMusic: value !== 'silence' })} />
 
-      <Segmented label={t('voicePlacement')} value={settings.voicePlacement} full options={[
+      <Segmented label={t('voicePlacement')} help={t('voicePlacementHelp')} value={settings.voicePlacement} full options={[
         ['interval', t('interval')], ['uniform', t('uniform')]
       ]} onChange={(value) => onChange({ voicePlacement: value as ArrangementSettings['voicePlacement'] })} />
 
       {settings.voicePlacement === 'interval' && <label className="field full">
-        <span>{t('intervalSeconds')}</span>
+        <FieldLabel help={t('intervalSecondsHelp')}>{t('intervalSeconds')}</FieldLabel>
         <div className="linked-range"><input type="range" min="0" max="300" step="1" value={intervalSeconds}
           onChange={(event) => changeInterval(Math.max(0, Math.round(Number(event.target.value))) * 1000)} />
         <div className="number-field"><input type="number" min="0" max="300" step="1" value={intervalSeconds}
@@ -368,7 +391,7 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         </div>
       </label>}
 
-      <Toggle label={t('allowOverlap')} checked={settings.allowVoiceOverlap} onChange={(allowVoiceOverlap) => onChange({
+      <Toggle label={t('allowOverlap')} help={t('allowOverlapHelp')} checked={settings.allowVoiceOverlap} onChange={(allowVoiceOverlap) => onChange({
         allowVoiceOverlap,
         ...(settings.durationFromVoices
           ? { targetDurationMs: voiceScheduleDuration(voiceAssets, settings.voiceIntervalMs, allowVoiceOverlap) }
@@ -376,11 +399,11 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       })} />
 
       <label className="field seed-field">
-        <span>{t('seed')}</span>
+        <FieldLabel help={t('seedHelp')}>{t('seed')}</FieldLabel>
         <input type="number" value={settings.seed} onChange={(event) => onChange({ seed: Number(event.target.value) || 1 })} />
       </label>
       <div className="mount-priorities full">
-        <strong>{t('mountPriorities')}</strong>
+        <strong><FieldLabel help={t('mountPrioritiesHelp')}>{t('mountPriorities')}</FieldLabel></strong>
         <ol><li>{t('priorityAllVoices')}</li><li>{t('priorityDuration')}</li><li>{t('priorityVoiceSpacing')}</li>
           <li>{t('priorityAllMusic')}</li><li>{t('priorityFillMusic')}</li></ol>
         <p>{t('priorityVoiceRule')}</p>
@@ -389,58 +412,58 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
 
     {tab === 'audio' && <div className="settings-tab-content"><div className="audio-settings-heading">
       <h3>{t('audioMix')}</h3>
-      <div className="audio-mode-switch"><Segmented label={t('editMode')} value={editingPreferences.mixEditorMode} options={[
+      <div className="audio-mode-switch"><Segmented label={t('editMode')} help={t('editModeHelp')} value={editingPreferences.mixEditorMode} options={[
         ['values', t('valuesMode')], ['graphic', t('graphicMode')]
       ]} onChange={(value) => onEditingPreferencesChange({ mixEditorMode: value as EditingPreferences['mixEditorMode'] })} /></div>
     </div>
     {editingPreferences.mixEditorMode === 'values' ? <div className="audio-settings-grid mix-values-grid">
-      <DbField label={t('musicLevel')} value={audioSettings.musicGainDb} onChange={(musicGainDb) => onAudioChange({ musicGainDb })} />
-      <DbField label={t('voiceLevel')} value={audioSettings.voiceGainDb} onChange={(voiceGainDb) => onAudioChange({ voiceGainDb })} />
-      <DbField label={t('duckingLevel')} value={audioSettings.duckingGainDb} min={-80} max={0} onChange={(duckingGainDb) => onAudioChange({ duckingGainDb })} />
-      <MsField label={t('fadeDown')} value={audioSettings.fadeDownMs} onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
-      <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs} onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
-      <MsField label={t('fadeDownOverlap')} value={audioSettings.fadeDownOverlapMs ?? 0}
+      <DbField label={t('musicLevel')} help={t('musicLevelHelp')} value={audioSettings.musicGainDb} onChange={(musicGainDb) => onAudioChange({ musicGainDb })} />
+      <DbField label={t('voiceLevel')} help={t('voiceLevelHelp')} value={audioSettings.voiceGainDb} onChange={(voiceGainDb) => onAudioChange({ voiceGainDb })} />
+      <DbField label={t('duckingLevel')} help={t('duckingLevelHelp')} value={audioSettings.duckingGainDb} min={-80} max={0} onChange={(duckingGainDb) => onAudioChange({ duckingGainDb })} />
+      <MsField label={t('fadeDown')} help={t('fadeDownHelp')} value={audioSettings.fadeDownMs} onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
+      <MsField label={t('fadeUp')} help={t('fadeUpHelp')} value={audioSettings.fadeUpMs} onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
+      <MsField label={t('fadeDownOverlap')} help={t('fadeDownOverlapHelp')} value={audioSettings.fadeDownOverlapMs ?? 0}
         onChange={(fadeDownOverlapMs) => onAudioChange({ fadeDownOverlapMs: Math.min(fadeDownOverlapMs, audioSettings.fadeDownMs) })} />
-      <MsField label={t('fadeUpOverlap')} value={audioSettings.fadeUpOverlapMs ?? 0}
+      <MsField label={t('fadeUpOverlap')} help={t('fadeUpOverlapHelp')} value={audioSettings.fadeUpOverlapMs ?? 0}
         onChange={(fadeUpOverlapMs) => onAudioChange({ fadeUpOverlapMs: Math.min(fadeUpOverlapMs, audioSettings.fadeUpMs) })} />
     </div> : <MixDuckingGraph settings={audioSettings} onChange={onAudioChange} />}
     <div className="audio-processing-heading"><h3>{t('audioProcessing')}</h3></div>
     <div className="audio-settings-grid audio-processing-grid">
-      <Toggle label={t('normalizeClips')} checked={audioSettings.normalizeClips ?? false}
+      <Toggle label={t('normalizeClips')} help={t('normalizeClipsHelp')} checked={audioSettings.normalizeClips ?? false}
         onChange={(normalizeClips) => onAudioChange({ normalizeClips })} />
-      <DbField label={t('normalizationTarget')} value={audioSettings.normalizationTargetLufs ?? -23} min={-30} max={-5}
+      <DbField label={t('normalizationTarget')} help={t('normalizationTargetHelp')} value={audioSettings.normalizationTargetLufs ?? -23} min={-30} max={-5}
         onChange={(normalizationTargetLufs) => onAudioChange({ normalizationTargetLufs })} />
-      <DbField label={t('truePeakCeiling')} value={audioSettings.truePeakCeilingDbtp ?? -1} min={-9} max={0}
+      <DbField label={t('truePeakCeiling')} help={t('truePeakCeilingHelp')} value={audioSettings.truePeakCeilingDbtp ?? -1} min={-9} max={0}
         onChange={(truePeakCeilingDbtp) => onAudioChange({ truePeakCeilingDbtp })} />
-      <Toggle label={t('enableEcho')} checked={audioSettings.echoEnabled ?? false}
+      <Toggle label={t('enableEcho')} help={t('enableEchoHelp')} checked={audioSettings.echoEnabled ?? false}
         onChange={(echoEnabled) => onAudioChange({ echoEnabled })} />
-      <MsField label={t('echoDelay')} value={audioSettings.echoDelayMs ?? 260}
+      <MsField label={t('echoDelay')} help={t('echoDelayHelp')} value={audioSettings.echoDelayMs ?? 260}
         onChange={(echoDelayMs) => onAudioChange({ echoDelayMs })} />
-      <PercentField label={t('echoFeedback')} value={audioSettings.echoFeedback ?? 30}
+      <PercentField label={t('echoFeedback')} help={t('echoFeedbackHelp')} value={audioSettings.echoFeedback ?? 30}
         onChange={(echoFeedback) => onAudioChange({ echoFeedback })} max={90} />
-      <PercentField label={t('effectMix')} value={audioSettings.echoMix ?? 15}
+      <PercentField label={t('effectMix')} help={t('echoMixHelp')} value={audioSettings.echoMix ?? 15}
         onChange={(echoMix) => onAudioChange({ echoMix })} />
-      <Toggle label={t('enableReverb')} checked={audioSettings.reverbEnabled ?? false}
+      <Toggle label={t('enableReverb')} help={t('enableReverbHelp')} checked={audioSettings.reverbEnabled ?? false}
         onChange={(reverbEnabled) => onAudioChange({ reverbEnabled })} />
-      <label className="field compact-field"><span>{t('reverbDuration')}</span><div className="number-field">
+      <label className="field compact-field"><FieldLabel help={t('reverbDurationHelp')}>{t('reverbDuration')}</FieldLabel><div className="number-field">
         <input type="number" min="0.1" max="10" step="0.1" value={audioSettings.reverbDuration ?? 1.8}
           onChange={(event) => onAudioChange({ reverbDuration: Math.max(.1, Math.min(10, Number(event.target.value))) })} /><em>s</em>
       </div></label>
-      <PercentField label={t('reverbDecay')} value={(audioSettings.reverbDecay ?? 2.4) * 10}
+      <PercentField label={t('reverbDecay')} help={t('reverbDecayHelp')} value={(audioSettings.reverbDecay ?? 2.4) * 10}
         onChange={(value) => onAudioChange({ reverbDecay: value / 10 })} max={100} />
-      <PercentField label={t('effectMix')} value={audioSettings.reverbMix ?? 15}
+      <PercentField label={t('effectMix')} help={t('reverbMixHelp')} value={audioSettings.reverbMix ?? 15}
         onChange={(reverbMix) => onAudioChange({ reverbMix })} />
     </div></div>}
 
     {tab === 'automation' && <div className="settings-tab-content automation-settings">
-      <Segmented label={t('displayLevelsAs')} value={automation?.displayUnit ?? editingPreferences.automationDisplayUnit} full options={[
+      <Segmented label={t('displayLevelsAs')} help={t('displayLevelsAsHelp')} value={automation?.displayUnit ?? editingPreferences.automationDisplayUnit} full options={[
         ['percent', t('percentage')], ['db', 'dB']
       ]} onChange={(value) => {
         const displayUnit = value as AutomationState['displayUnit'];
         onEditingPreferencesChange({ automationDisplayUnit: displayUnit });
         if (automation) onAutomationChange({ ...automation, displayUnit });
       }} />
-      <Toggle label={t('showAutomations')} checked={automation?.visible ?? editingPreferences.showAutomations}
+      <Toggle label={t('showAutomations')} help={t('showAutomationsHelp')} checked={automation?.visible ?? editingPreferences.showAutomations}
         onChange={(visible) => {
           onEditingPreferencesChange({ showAutomations: visible });
           if (automation) onAutomationChange({ ...automation, visible });
@@ -450,43 +473,43 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
     </div>}
 
     {tab === 'editing' && <div className="settings-tab-content automation-settings">
-      <Toggle label={t('enableSnap')} checked={editingPreferences.snapEnabled}
+      <Toggle label={t('enableSnap')} help={t('enableSnapHelp')} checked={editingPreferences.snapEnabled}
         onChange={(snapEnabled) => onEditingPreferencesChange({ snapEnabled })} />
-      <Segmented label={t('snapMode')} value={editingPreferences.snapMode} full options={[
+      <Segmented label={t('snapMode')} help={t('snapModeHelp')} value={editingPreferences.snapMode} full options={[
         ['smart', t('snapSmart')], ['grid', t('snapGrid')], ['edges', t('snapEdges')], ['original', t('snapOriginal')]
       ]} onChange={(value) => onEditingPreferencesChange({ snapMode: value as EditingPreferences['snapMode'] })} />
-      <label className="field full"><span>{t('gridStep')}</span><div className="number-field">
+      <label className="field full"><FieldLabel help={t('gridStepHelp')}>{t('gridStep')}</FieldLabel><div className="number-field">
         <input type="number" min="10" max="60000" step="10" value={editingPreferences.snapGridMs}
           onChange={(event) => onEditingPreferencesChange({ snapGridMs: Math.max(10, Number(event.target.value)) })} /><em>ms</em>
       </div></label>
-      <label className="field full"><span>{t('transportSkipInterval')}</span><div className="number-field">
+      <label className="field full"><FieldLabel help={t('transportSkipIntervalHelp')}>{t('transportSkipInterval')}</FieldLabel><div className="number-field">
         <input type="number" list="transport-skip-presets" min="1" max="86400" step="1" value={editingPreferences.transportSkipSeconds}
           onChange={(event) => onEditingPreferencesChange({ transportSkipSeconds: Math.max(1, Math.min(86400, Math.round(Number(event.target.value)))) })} />
         <em>{t('seconds')}</em>
         <datalist id="transport-skip-presets">{[10, 20, 30, 60, 90, 120, 300, 600].map(value => <option key={value} value={value} />)}</datalist>
       </div></label>
-      <Toggle label={t('allowAssetReuse')} checked={editingPreferences.allowAssetReuse}
+      <Toggle label={t('allowAssetReuse')} help={t('allowAssetReuseHelp')} checked={editingPreferences.allowAssetReuse}
         onChange={(allowAssetReuse) => onEditingPreferencesChange({ allowAssetReuse })} />
-      <Toggle label={t('verifyFileIntegrity')} checked={editingPreferences.verifyFileIntegrity}
+      <Toggle label={t('verifyFileIntegrity')} help={t('verifyFileIntegrityHelp')} checked={editingPreferences.verifyFileIntegrity}
         onChange={(verifyFileIntegrity) => onEditingPreferencesChange({ verifyFileIntegrity })} />
-      <Toggle label={t('analyzeLoudnessOnImport')} checked={editingPreferences.analyzeLoudnessOnImport}
+      <Toggle label={t('analyzeLoudnessOnImport')} help={t('analyzeLoudnessOnImportHelp')} checked={editingPreferences.analyzeLoudnessOnImport}
         onChange={(analyzeLoudnessOnImport) => onEditingPreferencesChange({ analyzeLoudnessOnImport })} />
-      <Toggle label={t('showFileLoudness')} checked={editingPreferences.showFileLoudness}
+      <Toggle label={t('showFileLoudness')} help={t('showFileLoudnessHelp')} checked={editingPreferences.showFileLoudness}
         onChange={(showFileLoudness) => onEditingPreferencesChange({ showFileLoudness })} />
       <div className="settings-divider full"><h3>{t('silenceTrim')}</h3></div>
-      <Toggle label={t('enableSilenceTrim')} checked={editingPreferences.trimSilenceEnabled}
+      <Toggle label={t('enableSilenceTrim')} help={t('enableSilenceTrimHelp')} checked={editingPreferences.trimSilenceEnabled}
         onChange={(trimSilenceEnabled) => onEditingPreferencesChange({ trimSilenceEnabled })} />
-      <DbField label={t('silenceThreshold')} value={editingPreferences.trimSilenceThresholdDb} min={-80} max={-10}
+      <DbField label={t('silenceThreshold')} help={t('silenceThresholdHelp')} value={editingPreferences.trimSilenceThresholdDb} min={-80} max={-10}
         onChange={(trimSilenceThresholdDb) => onEditingPreferencesChange({ trimSilenceThresholdDb })} />
-      <MsField label={t('silencePadding')} value={editingPreferences.trimSilencePaddingMs}
+      <MsField label={t('silencePadding')} help={t('silencePaddingHelp')} value={editingPreferences.trimSilencePaddingMs}
         onChange={(trimSilencePaddingMs) => onEditingPreferencesChange({ trimSilencePaddingMs })} />
-      <MsField label={t('minimumSilence')} value={editingPreferences.trimSilenceMinimumMs}
+      <MsField label={t('minimumSilence')} help={t('minimumSilenceHelp')} value={editingPreferences.trimSilenceMinimumMs}
         onChange={(trimSilenceMinimumMs) => onEditingPreferencesChange({ trimSilenceMinimumMs })} />
       <div className="trim-actions full">
-        <button disabled={!editingPreferences.trimSilenceEnabled || !voiceAssets.length || trimmingVoices} onClick={onTrimVoices}>
+        <button title={t('trimAllVoicesHelp')} disabled={!editingPreferences.trimSilenceEnabled || !voiceAssets.length || trimmingVoices} onClick={onTrimVoices}>
           {t(trimmingVoices ? 'analyzingSilence' : 'trimAllVoices')}
         </button>
-        <button disabled={!voiceAssets.some(asset => asset.sourceDurationMs !== undefined) || trimmingVoices} onClick={onRestoreVoiceTrims}>
+        <button title={t('restoreVoiceTrimsHelp')} disabled={!voiceAssets.some(asset => asset.sourceDurationMs !== undefined) || trimmingVoices} onClick={onRestoreVoiceTrims}>
           {t('restoreVoiceTrims')}
         </button>
       </div>
@@ -496,48 +519,48 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       <p className="settings-help">{t('snapControlHint')}</p>
     </div>}
 
-    <button className="mount-button" disabled={!canMount} onClick={onMount}>
+    <button className="mount-button" title={t('mountHelp')} disabled={!canMount} onClick={onMount}>
       <span className="mount-symbol">✦</span>{t(mounted ? 'remount' : 'mount')}<span className="arrow">→</span>
     </button>
   </aside>;
 }
 
-function DbField({ label, value, onChange, min = -60, max = 6 }: {
-  label: string; value: number; onChange: (value: number) => void; min?: number; max?: number;
+function DbField({ label, help, value, onChange, min = -60, max = 6 }: {
+  label: string; help?: string; value: number; onChange: (value: number) => void; min?: number; max?: number;
 }) {
-  return <label className="field compact-field"><span>{label}</span><div className="number-field">
+  return <label className="field compact-field"><FieldLabel help={help}>{label}</FieldLabel><div className="number-field">
     <input type="number" min={min} max={max} step="0.5" value={value}
       onChange={(event) => onChange(Math.min(max, Math.max(min, Number(event.target.value))))} /><em>dB</em>
   </div></label>;
 }
 
-function MsField({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {
-  return <label className="field compact-field"><span>{label}</span><div className="number-field">
+function MsField({ label, help, value, onChange }: { label: string; help?: string; value: number; onChange: (value: number) => void }) {
+  return <label className="field compact-field"><FieldLabel help={help}>{label}</FieldLabel><div className="number-field">
     <input type="number" min="0" max="30000" step="50" value={value}
       onChange={(event) => onChange(Math.min(30_000, Math.max(0, Number(event.target.value))))} /><em>ms</em>
   </div></label>;
 }
 
-function PercentField({ label, value, onChange, max = 100 }: { label: string; value: number; onChange: (value: number) => void; max?: number }) {
-  return <label className="field compact-field"><span>{label}</span><div className="number-field">
+function PercentField({ label, help, value, onChange, max = 100 }: { label: string; help?: string; value: number; onChange: (value: number) => void; max?: number }) {
+  return <label className="field compact-field"><FieldLabel help={help}>{label}</FieldLabel><div className="number-field">
     <input type="number" min="0" max={max} step="1" value={Math.round(value)}
       onChange={(event) => onChange(Math.min(max, Math.max(0, Number(event.target.value))))} /><em>%</em>
   </div></label>;
 }
 
-function Segmented({ label, value, options, onChange, full = false }: {
-  label: string; value: string; options: [string, string][]; onChange: (value: string) => void; full?: boolean;
+function Segmented({ label, help, value, options, onChange, full = false }: {
+  label: string; help?: string; value: string; options: [string, string][]; onChange: (value: string) => void; full?: boolean;
 }) {
   return <div className={`field segmented-field ${full ? 'full' : ''}`}>
-    <span>{label}</span>
+    <FieldLabel help={help}>{label}</FieldLabel>
     <div className="segmented">{options.map(([option, title]) =>
       <button key={option} className={value === option ? 'selected' : ''} onClick={() => onChange(option)}>{title}</button>
     )}</div>
   </div>;
 }
 
-function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: (value: boolean) => void }) {
-  return <label className="toggle-field"><span>{label}</span><input type="checkbox" checked={checked}
+function Toggle({ label, help, checked, onChange }: { label: string; help?: string; checked: boolean; onChange: (value: boolean) => void }) {
+  return <label className="toggle-field"><FieldLabel help={help}>{label}</FieldLabel><input type="checkbox" checked={checked}
     onChange={(event) => onChange(event.target.checked)} /><i /></label>;
 }
 
@@ -1419,7 +1442,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.25.1', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.26.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
