@@ -4,6 +4,7 @@ const dbToGain = (db: number) => Math.max(0, 10 ** (db / 20));
 const number = (value: number) => Number(value.toFixed(6));
 
 const groupValue = (automation: any, id: string, fallback: number) => automation?.groups?.find((item: any) => item.id === id)?.value ?? fallback;
+const groupOffset = (automation: any, id: string, fallback: number) => automation?.groups?.find((item: any) => item.id === id)?.offsetMs ?? fallback;
 
 const automationExpression = (points: any[], durationMs: number, clipStartMs: number) => {
   const sorted = [...(points || [])].sort((a, b) => a.position - b.position);
@@ -35,21 +36,28 @@ const musicExpression = (clip: any, payload: any) => {
       high: groupValue(automation, assignment?.highGroupId, fallbackHigh) / 100,
       low: groupValue(automation, assignment?.lowGroupId, fallbackLow) / 100,
       down: groupValue(automation, assignment?.fadeDownGroupId, payload.audioSettings.fadeDownMs) / 1000,
-      up: groupValue(automation, assignment?.fadeUpGroupId, payload.audioSettings.fadeUpMs) / 1000
+      up: groupValue(automation, assignment?.fadeUpGroupId, payload.audioSettings.fadeUpMs) / 1000,
+      downOverlap: groupOffset(automation, assignment?.fadeDownGroupId, payload.audioSettings.fadeDownOverlapMs ?? 0) / 1000,
+      upOverlap: groupOffset(automation, assignment?.fadeUpGroupId, payload.audioSettings.fadeUpOverlapMs ?? 0) / 1000
     };
   });
   let baseline = number(dbToGain(payload.audioSettings.musicGainDb)).toString();
   for (let index = settings.length - 1; index >= 0; index -= 1) {
     baseline = `if(lt(${global},${number(settings[index].voice.startMs / 1000)}),${number(settings[index].high)},${baseline})`;
   }
-  const envelopes = settings.map(({ voice, high, low, down, up }) => {
+  const envelopes = settings.map(({ voice, high, low, down, up, downOverlap, upOverlap }) => {
     const start = voice.startMs / 1000;
     const end = (voice.startMs + voice.durationMs) / 1000;
-    const downStart = start - down;
-    const upEnd = end + up;
+    const duration = voice.durationMs / 1000;
+    const effectiveDownOverlap = Math.min(duration, down, Math.max(0, downOverlap));
+    const effectiveUpOverlap = Math.min(Math.max(0, duration - effectiveDownOverlap), up, Math.max(0, upOverlap));
+    const downEnd = start + effectiveDownOverlap;
+    const downStart = downEnd - down;
+    const upStart = end - effectiveUpOverlap;
+    const upEnd = upStart + up;
     const downValue = down > 0 ? `(${number(high)}+(${number(low - high)})*(${global}-${number(downStart)})/${number(down)})` : number(low).toString();
-    const upValue = up > 0 ? `(${number(low)}+(${number(high - low)})*(${global}-${number(end)})/${number(up)})` : number(high).toString();
-    return `if(between(${global},${number(downStart)},${number(start)}),${downValue},if(between(${global},${number(start)},${number(end)}),${number(low)},if(between(${global},${number(end)},${number(upEnd)}),${upValue},1)))`;
+    const upValue = up > 0 ? `(${number(low)}+(${number(high - low)})*(${global}-${number(upStart)})/${number(up)})` : number(high).toString();
+    return `if(between(${global},${number(downStart)},${number(downEnd)}),${downValue},if(between(${global},${number(downEnd)},${number(upStart)}),${number(low)},if(between(${global},${number(upStart)},${number(upEnd)}),${upValue},1)))`;
   });
   return envelopes.reduce((result, envelope) => `min(${result},${envelope})`, baseline);
 };

@@ -38,6 +38,8 @@ const defaultAudioSettings: AudioSettings = {
   duckingGainDb: -40,
   fadeDownMs: 1500,
   fadeUpMs: 2000,
+  fadeDownOverlapMs: 0,
+  fadeUpOverlapMs: 0,
   normalizeClips: false,
   normalizationTargetLufs: -23,
   truePeakCeilingDbtp: -1,
@@ -337,6 +339,10 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       <DbField label={t('duckingLevel')} value={audioSettings.duckingGainDb} min={-80} max={0} onChange={(duckingGainDb) => onAudioChange({ duckingGainDb })} />
       <MsField label={t('fadeDown')} value={audioSettings.fadeDownMs} onChange={(fadeDownMs) => onAudioChange({ fadeDownMs })} />
       <MsField label={t('fadeUp')} value={audioSettings.fadeUpMs} onChange={(fadeUpMs) => onAudioChange({ fadeUpMs })} />
+      <MsField label={t('fadeDownOverlap')} value={audioSettings.fadeDownOverlapMs ?? 0}
+        onChange={(fadeDownOverlapMs) => onAudioChange({ fadeDownOverlapMs: Math.min(fadeDownOverlapMs, audioSettings.fadeDownMs) })} />
+      <MsField label={t('fadeUpOverlap')} value={audioSettings.fadeUpOverlapMs ?? 0}
+        onChange={(fadeUpOverlapMs) => onAudioChange({ fadeUpOverlapMs: Math.min(fadeUpOverlapMs, audioSettings.fadeUpMs) })} />
     </div> : <MixDuckingGraph settings={audioSettings} onChange={onAudioChange} />}
     <div className="audio-processing-heading"><h3>{t('audioProcessing')}</h3></div>
     <div className="audio-settings-grid audio-processing-grid">
@@ -1139,7 +1145,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.18.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.19.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1209,6 +1215,18 @@ export default function App() {
   const exportAudio = async (exportSettings: ExportSettings) => {
     if (!window.francisDesktop || !arrangement) return null;
     return window.francisDesktop.exportAudio(projectDocument(), exportSettings);
+  };
+
+  const changeAudioSettings = (patch: Partial<AudioSettings>) => {
+    const normalized = { ...patch };
+    if (patch.fadeDownMs !== undefined) normalized.fadeDownOverlapMs = Math.min(
+      patch.fadeDownMs, patch.fadeDownOverlapMs ?? audioSettings.fadeDownOverlapMs ?? 0
+    );
+    if (patch.fadeUpMs !== undefined) normalized.fadeUpOverlapMs = Math.min(
+      patch.fadeUpMs, patch.fadeUpOverlapMs ?? audioSettings.fadeUpOverlapMs ?? 0
+    );
+    setAudioSettings(current => ({ ...current, ...normalized }));
+    setAutomation(current => current ? syncDefaultAutomationGroups(current, normalized) : current);
   };
 
   const admitFromQuarantine = (item: QuarantineItem) => {
@@ -1296,10 +1314,7 @@ export default function App() {
           canMount={music.length + voices.length > 0}
           voiceAssets={scheduledVoiceSequence}
           onChange={changeArrangementSettings}
-          onAudioChange={(patch) => {
-            setAudioSettings(current => ({ ...current, ...patch }));
-            setAutomation(current => current ? syncDefaultAutomationGroups(current, patch) : current);
-          }}
+          onAudioChange={changeAudioSettings}
           onAutomationChange={setAutomation}
           onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
           onMount={mount} />

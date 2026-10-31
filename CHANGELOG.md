@@ -2,6 +2,24 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.19.0] - 2026-10-31
+
+### Añadido
+
+- Los puntos bajos del ducking pueden entrar dentro de la locución: la bajada puede terminar después de comenzar la voz y la recuperación puede empezar antes de que termine.
+- Los dos solapamientos pueden llegar a tocarse, eliminando el tramo bajo, pero nunca cruzarse.
+- Los modos numérico y gráfico permiten configurar cuánto entra cada transición dentro de la locución.
+
+### Corregido
+
+- Los puntos altos quedan limitados fuera de la locución o exactamente sobre sus bordes, manteniendo referencias consistentes para todos los grupos.
+- La reproducción en tiempo real, la pista gráfica y la exportación utilizan exactamente la misma geometría de solapamiento.
+- Las locuciones demasiado cortas limitan automáticamente ambos solapamientos sin invertir las transiciones.
+
+### Cambiado
+
+- Los cuatro puntos del trapezoide modifican conjuntamente tiempo y nivel al desplazarse en horizontal y vertical.
+
 ## [0.18.0] - 2026-10-31
 
 ### Añadido

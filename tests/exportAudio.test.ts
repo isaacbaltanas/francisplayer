@@ -33,4 +33,17 @@ describe('local audio export', () => {
     };
     expect(buildExportPlan(payload).filterScript.match(/aecho/g)).toHaveLength(2);
   });
+
+  it('exports ducking fades that overlap the voice boundaries', () => {
+    const payload = {
+      assets: [{ id: 'm', path: '/music.wav' }, { id: 'v', path: '/voice.wav' }], libraryTabs: [], automation: null,
+      audioSettings: { musicGainDb: 0, voiceGainDb: 0, duckingGainDb: -20, fadeDownMs: 1_000, fadeUpMs: 2_000,
+        fadeDownOverlapMs: 500, fadeUpOverlapMs: 1_000 },
+      arrangement: { durationMs: 10_000, music: [{ id: 'm1', assetId: 'm', kind: 'music', startMs: 0, durationMs: 10_000 }],
+        voice: [{ id: 'v1', assetId: 'v', kind: 'voice', startMs: 3_000, durationMs: 4_000 }] }
+    };
+    const script = buildExportPlan(payload).filterScript;
+    expect(script).toContain('between((t+0),2.5,3.5)');
+    expect(script).toContain('between((t+0),6,8)');
+  });
 });

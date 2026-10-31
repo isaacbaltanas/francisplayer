@@ -14,19 +14,20 @@ const colors: Record<AutomationGroupType, string[]> = {
 export const percentToDb = (percent: number) => percent <= 0 ? -80 : Math.max(-80, 20 * Math.log10(percent / 100));
 export const dbToPercent = (db: number) => Math.max(0, Math.min(100, 100 * 10 ** (db / 20)));
 
-const group = (type: AutomationGroupType, index: number, value: number): AutomationGroup => ({
+const group = (type: AutomationGroupType, index: number, value: number, offsetMs = 0): AutomationGroup => ({
   id: `${type}-${index}-${crypto.randomUUID()}`,
   type,
   index,
   value,
+  ...(type === 'fadeDown' || type === 'fadeUp' ? { offsetMs } : {}),
   color: colors[type][(index - 1) % colors[type].length]
 });
 
 export const createAutomationState = (arrangement: Arrangement, audio: AudioSettings): AutomationState => {
   const high = group('high', 1, dbToPercent(audio.musicGainDb));
   const low = group('low', 1, dbToPercent(audio.duckingGainDb));
-  const fadeDown = group('fadeDown', 1, audio.fadeDownMs);
-  const fadeUp = group('fadeUp', 1, audio.fadeUpMs);
+  const fadeDown = group('fadeDown', 1, audio.fadeDownMs, audio.fadeDownOverlapMs ?? 0);
+  const fadeUp = group('fadeUp', 1, audio.fadeUpMs, audio.fadeUpOverlapMs ?? 0);
   return {
     displayUnit: 'percent',
     visible: true,
@@ -55,6 +56,11 @@ export const updateAutomationGroup = (state: AutomationState, groupId: string, v
   groups: state.groups.map(item => item.id === groupId ? { ...item, value } : item)
 });
 
+export const updateAutomationTransition = (state: AutomationState, groupId: string, value: number, offsetMs: number): AutomationState => ({
+  ...state,
+  groups: state.groups.map(item => item.id === groupId ? { ...item, value, offsetMs } : item)
+});
+
 export const syncDefaultAutomationGroups = (
   state: AutomationState,
   patch: Partial<AudioSettings>
@@ -64,8 +70,12 @@ export const syncDefaultAutomationGroups = (
     if (item.index !== 1) return item;
     if (item.type === 'high' && patch.musicGainDb !== undefined) return { ...item, value: dbToPercent(patch.musicGainDb) };
     if (item.type === 'low' && patch.duckingGainDb !== undefined) return { ...item, value: dbToPercent(patch.duckingGainDb) };
-    if (item.type === 'fadeDown' && patch.fadeDownMs !== undefined) return { ...item, value: patch.fadeDownMs };
-    if (item.type === 'fadeUp' && patch.fadeUpMs !== undefined) return { ...item, value: patch.fadeUpMs };
+    if (item.type === 'fadeDown' && (patch.fadeDownMs !== undefined || patch.fadeDownOverlapMs !== undefined)) return {
+      ...item, value: patch.fadeDownMs ?? item.value, offsetMs: patch.fadeDownOverlapMs ?? item.offsetMs ?? 0
+    };
+    if (item.type === 'fadeUp' && (patch.fadeUpMs !== undefined || patch.fadeUpOverlapMs !== undefined)) return {
+      ...item, value: patch.fadeUpMs ?? item.value, offsetMs: patch.fadeUpOverlapMs ?? item.offsetMs ?? 0
+    };
     return item;
   })
 });
@@ -80,7 +90,7 @@ export const detachAutomationGroup = (
   const source = assignment && getGroup(state, assignment[key]);
   if (!assignment || !source) return { state, groupId: '' };
   const nextIndex = Math.max(0, ...state.groups.filter(item => item.type === type).map(item => item.index)) + 1;
-  const next = group(type, nextIndex, source.value);
+  const next = group(type, nextIndex, source.value, source.offsetMs ?? 0);
   return {
     groupId: next.id,
     state: {
@@ -129,7 +139,9 @@ const settingsFor = (state: AutomationState, assignment: AutomationAssignment, f
   musicGainDb: percentToDb(getGroup(state, assignment.highGroupId)?.value ?? dbToPercent(fallback.musicGainDb)),
   duckingGainDb: percentToDb(getGroup(state, assignment.lowGroupId)?.value ?? dbToPercent(fallback.duckingGainDb)),
   fadeDownMs: getGroup(state, assignment.fadeDownGroupId)?.value ?? fallback.fadeDownMs,
-  fadeUpMs: getGroup(state, assignment.fadeUpGroupId)?.value ?? fallback.fadeUpMs
+  fadeUpMs: getGroup(state, assignment.fadeUpGroupId)?.value ?? fallback.fadeUpMs,
+  fadeDownOverlapMs: getGroup(state, assignment.fadeDownGroupId)?.offsetMs ?? fallback.fadeDownOverlapMs ?? 0,
+  fadeUpOverlapMs: getGroup(state, assignment.fadeUpGroupId)?.offsetMs ?? fallback.fadeUpOverlapMs ?? 0
 });
 
 export const calculateGroupedDuckingDb = (
@@ -148,11 +160,7 @@ export const calculateGroupedDuckingDb = (
     const assignment = state.assignments.find(item => item.voiceClipId === clip.id);
     if (!assignment) continue;
     const local = settingsFor(state, assignment, fallback);
-    const start = clip.startMs - local.fadeDownMs;
-    const end = clip.startMs + clip.durationMs + local.fadeUpMs;
-    if (positionMs >= start && positionMs <= end) {
-      result = Math.min(result, calculateDuckingDb(positionMs, [clip], local));
-    }
+    result = Math.min(result, calculateDuckingDb(positionMs, [clip], local));
   }
   return result;
 };

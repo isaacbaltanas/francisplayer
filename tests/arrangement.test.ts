@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, shuffleWithSeed, voiceScheduleDuration } from '../src/lib/arrangement';
-import { calculateDuckingDb, dbToGain } from '../src/lib/audio';
+import { calculateDuckingDb, dbToGain, duckingEnvelope } from '../src/lib/audio';
 import {
   calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
-  updateAutomationGroup
+  updateAutomationGroup, updateAutomationTransition
 } from '../src/lib/automation';
 import { createAutomationSegments } from '../src/components/AutomationEditor';
 import type { ArrangementSettings, MediaAsset } from '../src/types';
@@ -28,6 +28,24 @@ describe('audio automation', () => {
     expect(dbToGain(0)).toBe(1);
     expect(dbToGain(-6)).toBeCloseTo(.501, 2);
     expect(dbToGain(6)).toBe(1);
+  });
+
+  it('allows both fades to overlap the voice while keeping upper points outside', () => {
+    const overlapping = { ...audioSettings, fadeDownMs: 1_000, fadeUpMs: 2_000,
+      fadeDownOverlapMs: 500, fadeUpOverlapMs: 1_000 };
+    const envelope = duckingEnvelope(voiceClip, overlapping);
+    expect(envelope).toMatchObject({ fadeDownStart: 9_500, fadeDownEnd: 10_500, fadeUpStart: 14_000, fadeUpEnd: 16_000 });
+    expect(calculateDuckingDb(10_000, [voiceClip], overlapping)).toBeCloseTo(-21.5);
+    expect(calculateDuckingDb(10_500, [voiceClip], overlapping)).toBe(-40);
+    expect(calculateDuckingDb(15_000, [voiceClip], overlapping)).toBeCloseTo(-21.5);
+  });
+
+  it('lets the lower points touch but never cross', () => {
+    const envelope = duckingEnvelope(voiceClip, { ...audioSettings, fadeDownMs: 4_000, fadeUpMs: 4_000,
+      fadeDownOverlapMs: 2_500, fadeUpOverlapMs: 4_000 });
+    expect(envelope.fadeDownEnd).toBe(envelope.fadeUpStart);
+    expect(envelope.fadeDownStart).toBeLessThanOrEqual(voiceClip.startMs);
+    expect(envelope.fadeUpEnd).toBeGreaterThanOrEqual(voiceClip.startMs + voiceClip.durationMs);
   });
 });
 
@@ -60,6 +78,15 @@ describe('automation groups', () => {
     const changed = updateAutomationGroup(state, lowGroup, 20);
     const atVoice = arrangement.voice[0].startMs + 1000;
     expect(calculateGroupedDuckingDb(atVoice, arrangement.voice, changed, audioSettings)).toBeCloseTo(-13.98, 1);
+  });
+
+  it('stores transition overlap in the linked automation group', () => {
+    const state = createAutomationState(arrangement, audioSettings);
+    const groupId = state.assignments[0].fadeDownGroupId;
+    const changed = updateAutomationTransition(state, groupId, 2_000, 750);
+    const group = changed.groups.find(item => item.id === groupId);
+    expect(group).toMatchObject({ value: 2_000, offsetMs: 750 });
+    expect(changed.assignments.every(item => item.fadeDownGroupId === groupId)).toBe(true);
   });
 
   it('never draws a ducking transition backwards when voice clips are close together', () => {

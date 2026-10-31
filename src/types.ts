@@ -69,6 +69,8 @@ export interface AudioSettings {
   duckingGainDb: number;
   fadeDownMs: number;
   fadeUpMs: number;
+  fadeDownOverlapMs?: number;
+  fadeUpOverlapMs?: number;
   normalizeClips?: boolean;
   normalizationTargetLufs?: number;
   truePeakCeilingDbtp?: number;
@@ -97,6 +99,7 @@ export interface AutomationGroup {
   type: AutomationGroupType;
   index: number;
   value: number;
+  offsetMs?: number;
   color: string;
 }
 
