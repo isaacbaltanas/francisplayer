@@ -909,6 +909,7 @@ export default function App() {
   const previewGeneration = useRef(0);
   const activePreviewRef = useRef<string | null>(null);
   const waveformHydrationGeneration = useRef(0);
+  const progressDismissTimers = useRef(new Map<string, number>());
   const historyRef = useRef<ProjectSnapshot[]>([]);
   const historyIndexRef = useRef(-1);
   const historyReadyRef = useRef(false);
@@ -945,12 +946,29 @@ export default function App() {
     const id = progress.jobId ?? 'background-analysis';
     setImportProgressJobs(current => {
       const existing = current.some(job => job.id === id);
+      if (!existing && progress.total > 0 && progress.completed >= progress.total) return current;
       const label = progress.kind === 'music' ? t('analyzingMusic') : progress.kind === 'voice' ? t('analyzingVoices') : t('analyzingFiles');
       return existing
         ? current.map(job => job.id === id ? { ...job, completed: progress.completed, total: progress.total } : job)
         : [...current, { id, kind: progress.kind, label, completed: progress.completed, total: progress.total }];
     });
   }), [t]);
+
+  useEffect(() => {
+    importProgressJobs.filter(job => job.total > 0 && job.completed >= job.total).forEach(job => {
+      if (progressDismissTimers.current.has(job.id)) return;
+      const timeout = window.setTimeout(() => {
+        progressDismissTimers.current.delete(job.id);
+        setImportProgressJobs(current => current.filter(candidate => candidate.id !== job.id));
+      }, 900);
+      progressDismissTimers.current.set(job.id, timeout);
+    });
+  }, [importProgressJobs]);
+
+  useEffect(() => () => {
+    progressDismissTimers.current.forEach(timeout => window.clearTimeout(timeout));
+    progressDismissTimers.current.clear();
+  }, []);
 
   useEffect(() => {
     if (!error) return;
@@ -1351,7 +1369,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.22.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.22.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
