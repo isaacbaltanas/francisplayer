@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
-import { clipsInLookahead } from '../lib/playbackScheduling';
+import { clipsInLookahead, technicalFadeWindow } from '../lib/playbackScheduling';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, smoothAudioGain, startAudioGain, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
 import type { Arrangement, AudioSettings, AutomationState, LibraryTab, LoudnessMeterReading, MediaAsset, TimelineClip } from '../types';
 
@@ -20,6 +20,7 @@ interface PlayingBuffer {
   clipId: string;
   source: AudioBufferSourceNode;
   gain: GainNode;
+  declick: GainNode;
   targetGain: number;
   cancel: () => void;
 }
@@ -100,20 +101,25 @@ const createPlayingBuffer = (
   const source = graph.context.createBufferSource();
   source.buffer = buffer;
   const gain = graph.context.createGain();
+  const declick = graph.context.createGain();
   const targetGain = safeGain(gainValue);
-  source.connect(gain).connect(graph.input);
+  source.connect(gain).connect(declick).connect(graph.input);
   const when = graph.context.currentTime + Math.max(0, clip.startMs - positionMs) / 1000;
-  gain.gain.setValueAtTime(0, when);
-  gain.gain.linearRampToValueAtTime(targetGain, when + .008);
+  const technicalFade = technicalFadeWindow(when, remainingMs / 1000);
+  gain.gain.setValueAtTime(targetGain, when);
+  declick.gain.setValueAtTime(0, technicalFade.startTime);
+  declick.gain.linearRampToValueAtTime(1, technicalFade.fadeInEndTime);
+  declick.gain.setValueAtTime(1, technicalFade.fadeOutStartTime);
+  declick.gain.linearRampToValueAtTime(0, technicalFade.endTime);
   source.start(when, Math.max(0, offsetMs) / 1000, remainingMs / 1000);
   let cancelled = false;
   return {
-    clipId: clip.id, source, gain, targetGain,
+    clipId: clip.id, source, gain, declick, targetGain,
     cancel: () => {
       if (cancelled) return;
       cancelled = true;
       try { source.stop(); } catch { /* Already stopped. */ }
-      source.disconnect(); gain.disconnect();
+      source.disconnect(); gain.disconnect(); declick.disconnect();
     }
   };
 };

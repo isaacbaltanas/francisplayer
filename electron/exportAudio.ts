@@ -128,6 +128,11 @@ export const buildExportPlan = (payload: any) => {
     const sourceStart = (clip.sourceOffsetMs ?? 0) / 1000;
     const chain = [`${sourceLabel}atrim=start=${number(sourceStart)}:end=${number(sourceStart + clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
     if (clip.kind === 'music') chain.push('asetnsamples=n=128:p=1');
+    if (clip.kind === 'voice') {
+      const technicalFade = Math.min(.008, clip.durationMs / 2000);
+      chain.push(`afade=t=in:st=0:d=${number(technicalFade)}`,
+        `afade=t=out:st=${number(Math.max(0, clip.durationMs / 1000 - technicalFade))}:d=${number(technicalFade)}`);
+    }
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${number(Math.min(clip.fadeInMs, clip.durationMs) / 1000)}`);
     if (clip.fadeOutMs) chain.push(`afade=t=out:st=${number(Math.max(0, clip.durationMs - clip.fadeOutMs) / 1000)}:d=${number(Math.min(clip.fadeOutMs, clip.durationMs) / 1000)}`);
     chain.push(`volume='(${base})*(${local})':eval=frame${clip.kind === 'voice' ? effectsFilter(payload.audioSettings) : ''}`,

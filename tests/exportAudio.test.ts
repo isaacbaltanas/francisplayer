@@ -16,6 +16,8 @@ describe('local audio export', () => {
     expect(plan.filterScript).toContain('afade=t=out');
     expect(plan.filterScript).toContain('amix=inputs=2');
     expect(plan.filterScript).toContain('asetnsamples=n=128:p=1');
+    expect(plan.filterScript).toContain('afade=t=in:st=0:d=0.008');
+    expect(plan.filterScript).toContain('afade=t=out:st=1.992:d=0.008');
   });
 
   it('exports a non-destructive trimmed source range', () => {

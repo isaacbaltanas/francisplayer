@@ -131,6 +131,45 @@ export const parseSilenceBounds = (output: string, durationMs: number, paddingMs
   return { trimStartMs, trimEndMs, trimmed: trimStartMs > 0 || trimEndMs < durationMs };
 };
 
+export const nearestLowAmplitudeFrame = (pcm: Buffer) => {
+  const samples = Math.floor(pcm.length / 4);
+  if (!samples) return 0;
+  const center = (samples - 1) / 2;
+  let best = 0;
+  let bestAmplitude = Number.POSITIVE_INFINITY;
+  for (let index = 0; index < samples; index += 1) {
+    const value = pcm.readFloatLE(index * 4);
+    if (!Number.isFinite(value)) continue;
+    const amplitude = Math.abs(value);
+    if (amplitude < bestAmplitude - 1e-9
+      || (Math.abs(amplitude - bestAmplitude) <= 1e-9 && Math.abs(index - center) < Math.abs(best - center))) {
+      best = index; bestAmplitude = amplitude;
+    }
+  }
+  return best;
+};
+
+const refineBoundary = (binary: string, filePath: string, targetMs: number, durationMs: number, radiusMs = 6) =>
+  new Promise<number>(resolve => {
+    if (targetMs <= 0 || targetMs >= durationMs) { resolve(targetMs); return; }
+    const startMs = Math.max(0, targetMs - radiusMs);
+    const endMs = Math.min(durationMs, targetMs + radiusMs);
+    const sampleRate = 48_000;
+    const process = spawn(binary, ['-hide_banner', '-loglevel', 'error', '-ss', String(startMs / 1000), '-i', filePath,
+      '-t', String((endMs - startMs) / 1000), '-map', '0:a:0', '-ac', '1', '-ar', String(sampleRate), '-f', 'f32le', 'pipe:1'],
+    { windowsHide: true });
+    const chunks: Buffer[] = [];
+    process.stdout.on('data', chunk => chunks.push(Buffer.from(chunk)));
+    const unchanged = () => resolve(targetMs);
+    process.once('error', unchanged);
+    process.once('exit', code => {
+      if (code !== 0) { unchanged(); return; }
+      const pcm = Buffer.concat(chunks);
+      if (!pcm.length) { unchanged(); return; }
+      resolve(Math.max(0, Math.min(durationMs, startMs + nearestLowAmplitudeFrame(pcm) / sampleRate * 1000)));
+    });
+  });
+
 const detectSilenceBounds = (binary: string, item: { path: string; durationMs: number }, thresholdDb: number,
   paddingMs: number, minimumSilenceMs: number) => new Promise<{ path: string; trimStartMs: number; trimEndMs: number; trimmed: boolean }>(resolve => {
   const process = spawn(binary, ['-hide_banner', '-i', item.path, '-map', '0:a:0', '-af',
@@ -149,7 +188,16 @@ export const analyzeSilence = async (binary: string, items: Array<{ path: string
   paddingMs: number, minimumSilenceMs: number, onProgress?: (completed: number, total: number) => void) => {
   let completed = 0;
   return parallelMap(items, 4, async item => {
-    const result = await detectSilenceBounds(binary, item, thresholdDb, paddingMs, minimumSilenceMs);
+    const detected = await detectSilenceBounds(binary, item, thresholdDb, paddingMs, minimumSilenceMs);
+    let result = detected;
+    if (detected.trimmed) {
+      const [trimStartMs, trimEndMs] = await Promise.all([
+        refineBoundary(binary, item.path, detected.trimStartMs, item.durationMs),
+        refineBoundary(binary, item.path, detected.trimEndMs, item.durationMs)
+      ]);
+      if (trimEndMs - trimStartMs >= 100) result = { ...detected,
+        trimStartMs: Math.round(trimStartMs), trimEndMs: Math.round(trimEndMs) };
+    }
     completed += 1; onProgress?.(completed, items.length);
     return result;
   });

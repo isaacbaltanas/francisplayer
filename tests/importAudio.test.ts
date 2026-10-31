@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferCollectionName, parseLoudnessReport, parseSilenceBounds, waveformFromPcm } from '../electron/importAudio';
+import { inferCollectionName, nearestLowAmplitudeFrame, parseLoudnessReport, parseSilenceBounds, waveformFromPcm } from '../electron/importAudio';
 
 describe('mass import naming', () => {
   it('reduces decoded PCM to normalized waveform peaks', () => {
@@ -36,5 +36,13 @@ describe('mass import naming', () => {
   it('does not trim an entirely silent or implausibly short result', () => {
     const report = '[silencedetect] silence_start: 0\n[silencedetect] silence_end: 5';
     expect(parseSilenceBounds(report, 5_000, 0)).toEqual({ trimStartMs: 0, trimEndMs: 5_000, trimmed: false });
+  });
+
+  it('selects the lowest-amplitude frame nearest to the requested boundary', () => {
+    const pcm = Buffer.alloc(7 * 4);
+    [.8, .4, .05, .001, -.05, -.4, -.8].forEach((sample, index) => pcm.writeFloatLE(sample, index * 4));
+    expect(nearestLowAmplitudeFrame(pcm)).toBe(3);
+    const silence = Buffer.alloc(8 * 4);
+    expect(nearestLowAmplitudeFrame(silence)).toBe(3);
   });
 });
