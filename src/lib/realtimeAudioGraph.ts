@@ -3,6 +3,9 @@ import type { AudioSettings, LoudnessMeterReading } from '../types';
 export interface RealtimeAudioGraph {
   context: AudioContext;
   input: GainNode;
+  musicInput: GainNode;
+  musicDucking: AudioWorkletNode | GainNode;
+  sampleAccurateDucking: boolean;
   output: GainNode;
   dry: GainNode;
   echoTaps: Array<{ delay: DelayNode; gain: GainNode }>;
@@ -59,6 +62,7 @@ export const createRealtimeAudioGraph = async (
 ): Promise<RealtimeAudioGraph> => {
   const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
   const input = context.createGain();
+  const musicInput = context.createGain();
   const output = context.createGain();
   const dry = context.createGain();
   const echoTaps = Array.from({ length: 8 }, () => ({ delay: context.createDelay(30), gain: context.createGain() }));
@@ -66,15 +70,25 @@ export const createRealtimeAudioGraph = async (
   const meterSink = context.createGain();
   meterSink.gain.value = 0;
   let meter: AudioWorkletNode | GainNode;
+  let musicDucking: AudioWorkletNode | GainNode;
+  let sampleAccurateDucking = false;
+  try {
+    await context.audioWorklet.addModule('./ducking-worklet.js');
+    musicDucking = new AudioWorkletNode(context, 'francis-ducking', {
+      numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: 'max', outputChannelCount: [2]
+    });
+    sampleAccurateDucking = true;
+  } catch { musicDucking = context.createGain(); }
   try {
     await context.audioWorklet.addModule('./loudness-worklet.js');
     meter = new AudioWorkletNode(context, 'francis-loudness', { channelCount: 2, channelCountMode: 'max', outputChannelCount: [2] });
     meter.port.onmessage = event => onMeter(event.data as LoudnessMeterReading);
   } catch { meter = context.createGain(); }
   input.connect(dry).connect(output);
+  musicInput.connect(musicDucking).connect(output);
   echoTaps.forEach(tap => input.connect(tap.delay).connect(tap.gain).connect(output));
   reverbTaps.forEach(tap => input.connect(tap.delay).connect(tap.gain).connect(output));
   output.connect(context.destination);
   output.connect(meter).connect(meterSink).connect(context.destination);
-  return { context, input, output, dry, echoTaps, reverbTaps, meter, meterSink };
+  return { context, input, musicInput, musicDucking, sampleAccurateDucking, output, dry, echoTaps, reverbTaps, meter, meterSink };
 };

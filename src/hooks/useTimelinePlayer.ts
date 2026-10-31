@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
-import { calculateGroupedDuckingDb } from '../lib/automation';
+import { buildRealtimeDuckingPlan, calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
 import { clipsInLookahead, voicePlaybackWindow } from '../lib/playbackScheduling';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, smoothAudioGain, startAudioGain, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
@@ -49,7 +49,7 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
   const gain = graph.context.createGain();
   const targetGain = safeGain(gainValue);
   gain.gain.value = 0;
-  source.connect(gain).connect(clip.kind === 'voice' ? graph.input : graph.output);
+  source.connect(gain).connect(clip.kind === 'voice' ? graph.input : graph.musicInput);
   let cancelled = false;
   let readySettled = false;
   let settleReady = () => undefined;
@@ -147,6 +147,9 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   const voiceBuffersRef = useRef<Map<string, CachedVoiceBuffer>>(new Map());
   const voiceBufferPromisesRef = useRef<Map<string, Promise<AudioBuffer | null>>>(new Map());
   const playbackGenerationRef = useRef(0);
+  const duckingConfigurationRef = useRef<{ generation: number; plan: object } | null>(null);
+  const duckingPlan = useMemo(() => buildRealtimeDuckingPlan(arrangement?.voice ?? [], automation, audioSettings),
+    [arrangement, automation, audioSettings]);
 
   const ensureGraph = useCallback(async () => {
     if (!graphRef.current) { graphRef.current = await createRealtimeAudioGraph(setMeter); configureRealtimeAudioGraph(graphRef.current, audioSettings); }
@@ -242,10 +245,23 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
         }
       });
     };
-    sync(arrangement.music.filter(clip => clip.kind === 'music'), musicRef.current, () => musicVolume);
+    const needsDuckingConfiguration = graph.sampleAccurateDucking
+      && (duckingConfigurationRef.current?.generation !== generation || duckingConfigurationRef.current?.plan !== duckingPlan);
+    const configureDucking = (positionMs: number) => {
+      if (!graph.sampleAccurateDucking || !(graph.musicDucking instanceof AudioWorkletNode)) return;
+      graph.musicDucking.port.postMessage({ type: 'configure', anchorContextTime: graph.context.currentTime,
+        anchorPositionMs: positionMs, ...duckingPlan });
+    };
+    if (needsDuckingConfiguration) configureDucking(nextPositionMs);
+    sync(arrangement.music.filter(clip => clip.kind === 'music'), musicRef.current,
+      () => graph.sampleAccurateDucking ? 1 : musicVolume);
     await Promise.all(pending);
     const voicePositionMs = mediaClockPosition() ?? nextPositionMs;
     positionRef.current = voicePositionMs;
+    if (needsDuckingConfiguration) {
+      configureDucking(voicePositionMs);
+      duckingConfigurationRef.current = { generation, plan: duckingPlan };
+    }
     const upcomingVoices = clipsInLookahead(arrangement.voice, voicePositionMs, VOICE_LOOKAHEAD_MS);
     const registerVoice = (clipId: string, created: PlayingBuffer) => {
       voicesRef.current.set(clipId, created);
@@ -291,7 +307,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
         if (created) registerVoice(clip.id, created);
       });
     });
-  }, [arrangement, assets, audioSettings, automation, decodeVoiceBuffer, ensureGraph, mediaClockPosition, tabs]);
+  }, [arrangement, assets, audioSettings, automation, decodeVoiceBuffer, duckingPlan, ensureGraph, mediaClockPosition, tabs]);
 
   const holdPosition = useCallback(() => {
     const currentPosition = mediaClockPosition() ?? positionRef.current;

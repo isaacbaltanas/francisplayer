@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { automationValueAt, clipFadeGain } from '../src/lib/clipGain';
 import { calculateDuckingDb, normalizationAdjustmentDb } from '../src/lib/audio';
+import { buildRealtimeDuckingPlan } from '../src/lib/automation';
 import type { TimelineClip } from '../src/types';
 
 const clip: TimelineClip = {
@@ -35,5 +36,16 @@ describe('clip and track gain', () => {
     expect(Math.abs(calculateDuckingDb(4_999, [voice], settings) - calculateDuckingDb(5_000, [voice], settings))).toBeLessThan(.03);
     expect(Math.abs(calculateDuckingDb(12_999, [voice], settings) - calculateDuckingDb(13_000, [voice], settings))).toBeLessThan(.03);
     expect(Math.abs(calculateDuckingDb(13_000, [voice], settings) - calculateDuckingDb(13_001, [voice], settings))).toBeLessThan(.03);
+  });
+
+  it('builds exact worklet boundaries from the timeline settings', () => {
+    const voice = { ...clip, startMs: 5_000, durationMs: 8_000 };
+    expect(buildRealtimeDuckingPlan([voice], null, {
+      musicGainDb: -3, voiceGainDb: -1, duckingGainDb: -40,
+      fadeDownMs: 1_500, fadeUpMs: 2_000, fadeDownOverlapMs: 0, fadeUpOverlapMs: 0
+    }).envelopes[0]).toMatchObject({
+      downStartMs: 3_500, downEndMs: 5_000, upStartMs: 13_000, upEndMs: 15_000,
+      highDb: -3, lowDb: -40
+    });
   });
 });

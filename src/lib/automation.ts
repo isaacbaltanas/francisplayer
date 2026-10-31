@@ -169,6 +169,41 @@ const settingsFor = (state: AutomationState, assignment: AutomationAssignment, f
   fadeUpOverlapMs: getGroup(state, assignment.fadeUpGroupId)?.offsetMs ?? fallback.fadeUpOverlapMs ?? 0
 });
 
+export interface RealtimeDuckingEnvelope {
+  startMs: number;
+  endMs: number;
+  downStartMs: number;
+  downEndMs: number;
+  upStartMs: number;
+  upEndMs: number;
+  highDb: number;
+  lowDb: number;
+}
+
+export const buildRealtimeDuckingPlan = (
+  voiceClips: TimelineClip[],
+  state: AutomationState | null,
+  fallback: AudioSettings
+): { defaultHighDb: number; envelopes: RealtimeDuckingEnvelope[] } => {
+  const envelopes = [...voiceClips].sort((a, b) => a.startMs - b.startMs).map(clip => {
+    const assignment = state?.assignments.find(item => item.voiceClipId === clip.id);
+    const local = state && assignment ? settingsFor(state, assignment, fallback) : fallback;
+    const fadeDownMs = Math.max(0, local.fadeDownMs);
+    const fadeUpMs = Math.max(0, local.fadeUpMs);
+    const downOverlap = Math.min(clip.durationMs, fadeDownMs, Math.max(0, local.fadeDownOverlapMs ?? 0));
+    const upOverlap = Math.min(Math.max(0, clip.durationMs - downOverlap), fadeUpMs, Math.max(0, local.fadeUpOverlapMs ?? 0));
+    const downEndMs = clip.startMs + downOverlap;
+    const upStartMs = clip.startMs + clip.durationMs - upOverlap;
+    return {
+      startMs: clip.startMs, endMs: clip.startMs + clip.durationMs,
+      downStartMs: downEndMs - fadeDownMs, downEndMs,
+      upStartMs, upEndMs: upStartMs + fadeUpMs,
+      highDb: local.musicGainDb, lowDb: local.duckingGainDb
+    };
+  });
+  return { defaultHighDb: fallback.musicGainDb, envelopes };
+};
+
 export const calculateGroupedDuckingDb = (
   positionMs: number,
   voiceClips: TimelineClip[],
