@@ -60,7 +60,7 @@ export const configureRealtimeAudioGraph = (graph: RealtimeAudioGraph, settings:
 export const createRealtimeAudioGraph = async (
   onMeter: (reading: LoudnessMeterReading) => void = () => undefined
 ): Promise<RealtimeAudioGraph> => {
-  const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
+  const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'playback' });
   const input = context.createGain();
   const musicInput = context.createGain();
   const output = context.createGain();

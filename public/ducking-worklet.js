@@ -15,10 +15,11 @@ class FrancisDuckingProcessor extends AudioWorkletProcessor {
     };
   }
 
-  dbAt(positionMs, baselineDb, active) {
+  dbAt(positionMs, baselineDb) {
     let result = baselineDb;
-    for (let index = 0; index < active.length; index += 1) {
-      const item = active[index];
+    for (let index = 0; index < this.envelopes.length; index += 1) {
+      const item = this.envelopes[index];
+      if (item.downStartMs > positionMs || item.upEndMs < positionMs) continue;
       let candidate = item.highDb;
       if (positionMs >= item.downEndMs && positionMs <= item.upStartMs) candidate = item.lowDb;
       else if (item.downEndMs > item.downStartMs && positionMs < item.downEndMs) {
@@ -39,10 +40,8 @@ class FrancisDuckingProcessor extends AudioWorkletProcessor {
     if (!output.length) return true;
     const frames = output[0].length;
     const blockStartMs = this.anchorPositionMs + (currentTime - this.anchorContextTime) * 1000;
-    const blockEndMs = blockStartMs + frames / sampleRate * 1000;
-    const active = this.envelopes.filter(item => item.downStartMs <= blockEndMs && item.upEndMs >= blockStartMs);
-    let nextIndex = this.envelopes.findIndex(item => blockStartMs < item.startMs);
-    if (nextIndex < 0) nextIndex = this.envelopes.length;
+    let nextIndex = 0;
+    while (nextIndex < this.envelopes.length && blockStartMs >= this.envelopes[nextIndex].startMs) nextIndex += 1;
     for (let sample = 0; sample < frames; sample += 1) {
       const contextAtSample = currentTime + sample / sampleRate;
       const positionMs = this.anchorPositionMs + (contextAtSample - this.anchorContextTime) * 1000;
@@ -50,7 +49,7 @@ class FrancisDuckingProcessor extends AudioWorkletProcessor {
       const baseline = this.envelopes.length
         ? (nextIndex < this.envelopes.length ? this.envelopes[nextIndex] : this.envelopes[this.envelopes.length - 1]).highDb
         : this.defaultHighDb;
-      const gain = Math.pow(10, this.dbAt(positionMs, baseline, active) / 20);
+      const gain = Math.pow(10, this.dbAt(positionMs, baseline) / 20);
       for (let channel = 0; channel < output.length; channel += 1) {
         output[channel][sample] = (input[channel]?.[sample] || input[0]?.[sample] || 0) * gain;
       }
