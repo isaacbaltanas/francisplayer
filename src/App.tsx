@@ -1048,6 +1048,7 @@ export default function App() {
   const previewNodesRef = useRef<{
     source: MediaElementAudioSourceNode;
     gain: GainNode;
+    boundaryGain: GainNode;
     dryRoute: GainNode;
     processedRoute: GainNode;
     asset: MediaAsset;
@@ -1088,6 +1089,7 @@ export default function App() {
     audio.current?.removeAttribute('src');
     previewNodesRef.current?.source.disconnect();
     previewNodesRef.current?.gain.disconnect();
+    previewNodesRef.current?.boundaryGain.disconnect();
     previewNodesRef.current?.dryRoute.disconnect();
     previewNodesRef.current?.processedRoute.disconnect();
     void previewGraphRef.current?.context.close();
@@ -1248,6 +1250,7 @@ export default function App() {
     if (nodes) {
       nodes.source.disconnect();
       nodes.gain.disconnect();
+      nodes.boundaryGain.disconnect();
       nodes.dryRoute.disconnect();
       nodes.processedRoute.disconnect();
     }
@@ -1319,6 +1322,7 @@ export default function App() {
       await graph.context.resume();
       const source = graph.context.createMediaElementSource(next);
       const gain = graph.context.createGain();
+      const boundaryGain = graph.context.createGain();
       const dryRoute = graph.context.createGain();
       const processedRoute = graph.context.createGain();
       const levelDb = asset.kind === 'music' ? audioSettings.musicGainDb : audioSettings.voiceGainDb;
@@ -1329,9 +1333,19 @@ export default function App() {
       dryRoute.gain.value = processed ? 0 : 1;
       processedRoute.gain.value = processed ? 1 : 0;
       source.connect(gain);
-      gain.connect(dryRoute).connect(graph.output);
-      gain.connect(processedRoute).connect(graph.input);
-      previewNodesRef.current = { source, gain, dryRoute, processedRoute, asset };
+      gain.connect(boundaryGain);
+      boundaryGain.connect(dryRoute).connect(graph.output);
+      boundaryGain.connect(processedRoute).connect(graph.input);
+      const previewStartSeconds = (asset.trimStartMs ?? 0) / 1000;
+      const previewEndSeconds = (asset.trimEndMs ?? asset.sourceDurationMs ?? asset.durationMs) / 1000;
+      const previewDuration = Math.max(0, previewEndSeconds - previewStartSeconds);
+      const fadeSeconds = Math.min(.008, previewDuration / 2);
+      const now = graph.context.currentTime;
+      boundaryGain.gain.setValueAtTime(0, now);
+      boundaryGain.gain.linearRampToValueAtTime(1, now + fadeSeconds);
+      boundaryGain.gain.setValueAtTime(1, now + Math.max(fadeSeconds, previewDuration - fadeSeconds));
+      boundaryGain.gain.linearRampToValueAtTime(0, now + previewDuration);
+      previewNodesRef.current = { source, gain, boundaryGain, dryRoute, processedRoute, asset };
       await next.play();
       if (generation !== previewGeneration.current) {
         next.pause(); next.removeAttribute('src'); next.load();

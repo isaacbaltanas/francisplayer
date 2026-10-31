@@ -42,6 +42,9 @@ export interface MediaAsset {
   sourceDurationMs?: number;
   trimStartMs?: number;
   trimEndMs?: number;
+  boundaryDiscontinuity?: boolean;
+  boundaryFadeInMs?: number;
+  boundaryFadeOutMs?: number;
 }
 
 export interface AudioAnalysis {

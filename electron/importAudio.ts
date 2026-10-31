@@ -108,6 +108,47 @@ export const extractWaveform = (binary: string, filePath: string) => new Promise
   process.once('exit', code => resolve(code === 0 ? waveformFromPcm(Buffer.concat(chunks)) : []));
 });
 
+export const boundaryFadeFromPcm = (pcm: Buffer, channels = 2, edge: 'start' | 'end' = 'end') => {
+  const frames = Math.floor(pcm.length / 4 / channels);
+  if (!frames) return 0;
+  const edgeFrame = edge === 'start' ? 0 : frames - 1;
+  let edgeAmplitude = 0;
+  let energy = 0;
+  let samples = 0;
+  for (let frame = 0; frame < frames; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const value = pcm.readFloatLE((frame * channels + channel) * 4);
+      if (!Number.isFinite(value)) continue;
+      if (frame === edgeFrame) edgeAmplitude = Math.max(edgeAmplitude, Math.abs(value));
+      energy += value * value;
+      samples += 1;
+    }
+  }
+  const rms = Math.sqrt(energy / Math.max(1, samples));
+  if (edgeAmplitude < Math.max(.0005, rms * .02)) return 0;
+  return edgeAmplitude >= .03 ? 8 : edgeAmplitude >= .01 ? 6 : 4;
+};
+
+const decodeBoundaryWindow = (binary: string, filePath: string, edge: 'start' | 'end') => new Promise<Buffer>(resolve => {
+  const seek = edge === 'end' ? ['-sseof', '-0.025'] : [];
+  const process = spawn(binary, ['-hide_banner', '-loglevel', 'error', ...seek, '-i', filePath,
+    ...(edge === 'start' ? ['-t', '0.025'] : []), '-map', '0:a:0', '-ac', '2', '-ar', '44100', '-f', 'f32le', 'pipe:1'],
+  { windowsHide: true });
+  const chunks: Buffer[] = [];
+  process.stdout.on('data', chunk => chunks.push(Buffer.from(chunk)));
+  process.once('error', () => resolve(Buffer.alloc(0)));
+  process.once('exit', code => resolve(code === 0 ? Buffer.concat(chunks) : Buffer.alloc(0)));
+});
+
+const inspectBoundaries = async (binary: string, filePath: string) => {
+  const [start, end] = await Promise.all([
+    decodeBoundaryWindow(binary, filePath, 'start'), decodeBoundaryWindow(binary, filePath, 'end')
+  ]);
+  const boundaryFadeInMs = boundaryFadeFromPcm(start, 2, 'start');
+  const boundaryFadeOutMs = boundaryFadeFromPcm(end, 2, 'end');
+  return { boundaryFadeInMs, boundaryFadeOutMs, boundaryDiscontinuity: boundaryFadeInMs > 0 || boundaryFadeOutMs > 0 };
+};
+
 export const parseSilenceBounds = (output: string, durationMs: number, paddingMs = 80) => {
   const events = [...output.matchAll(/silence_(start|end):\s*(-?[\d.]+)/g)]
     .map(match => ({ type: match[1] as 'start' | 'end', timeMs: Math.max(0, Number(match[2]) * 1000) }))
@@ -255,12 +296,15 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
       return finish({ outcome: 'quarantined', item: { ...quarantine(kind, filePath, stat.size, hash, reason, inspected.detail), durationMs: inspected.durationMs },
         log: { path: filePath, name, outcome: 'quarantined', detail: inspected.detail } });
     }
-    const waveform = await extractWaveform(ffmpegPath, filePath);
+    const [waveform, boundary] = await Promise.all([
+      extractWaveform(ffmpegPath, filePath), inspectBoundaries(ffmpegPath, filePath)
+    ]);
     return finish({ outcome: 'imported', asset: {
       id: `${kind}-${Date.now()}-${index}-${crypto.randomUUID()}`, kind, name: path.basename(filePath, path.extname(filePath)),
       durationMs: inspected.durationMs, sizeBytes: stat.size, path: filePath, previewUrl: mediaUrlForPath(filePath),
-      color: '#4f8cff', libraryTabId: tabId, waveform, fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked', analysis: inspected.analysis
-    }, log: { path: filePath, name, outcome: 'imported', detail: verifyIntegrity ? 'Fully decoded and verified' : 'Metadata verified' } });
+      color: '#4f8cff', libraryTabId: tabId, waveform, fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked',
+      analysis: inspected.analysis, ...boundary
+    }, log: { path: filePath, name, outcome: 'imported', detail: `${verifyIntegrity ? 'Fully decoded and verified' : 'Metadata verified'}${boundary.boundaryDiscontinuity ? ' · Boundary de-click applied' : ''}` } });
   });
   const assets = results.filter(item => item.outcome === 'imported').map(item => item.asset);
   const quarantined = results.filter(item => item.outcome === 'quarantined').map(item => item.item);

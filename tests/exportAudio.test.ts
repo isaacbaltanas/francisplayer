@@ -87,6 +87,8 @@ describe('local audio export', () => {
         echoEnabled: true, reverbEnabled: true },
       arrangement: { durationMs: 1_000, music: [{ id: 'm1', assetId: 'm', kind: 'music', startMs: 0, durationMs: 1_000 }], voice: [] } });
     expect(plan.filterScript).not.toContain('aecho');
+    expect(plan.filterScript).toContain('afade=t=in:st=0:d=0.008');
+    expect(plan.filterScript).toContain('afade=t=out:st=0.992:d=0.008');
   });
 
   it('exports ducking fades that overlap the voice boundaries', () => {

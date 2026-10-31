@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferCollectionName, nearestLowAmplitudeFrame, parseLoudnessReport, parseSilenceBounds, waveformFromPcm } from '../electron/importAudio';
+import { boundaryFadeFromPcm, inferCollectionName, nearestLowAmplitudeFrame, parseLoudnessReport, parseSilenceBounds, waveformFromPcm } from '../electron/importAudio';
 
 describe('mass import naming', () => {
   it('reduces decoded PCM to normalized waveform peaks', () => {
@@ -44,5 +44,13 @@ describe('mass import naming', () => {
     expect(nearestLowAmplitudeFrame(pcm)).toBe(3);
     const silence = Buffer.alloc(8 * 4);
     expect(nearestLowAmplitudeFrame(silence)).toBe(3);
+  });
+
+  it('detects a non-zero stereo boundary and ignores a clean one', () => {
+    const pcm = Buffer.alloc(20 * 2 * 4);
+    pcm.writeFloatLE(.2, (20 * 2 - 2) * 4);
+    pcm.writeFloatLE(-.15, (20 * 2 - 1) * 4);
+    expect(boundaryFadeFromPcm(pcm, 2, 'end')).toBe(8);
+    expect(boundaryFadeFromPcm(pcm, 2, 'start')).toBe(0);
   });
 });
