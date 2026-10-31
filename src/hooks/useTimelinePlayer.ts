@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { dbToGain, dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
+import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
 import type { Arrangement, AudioSettings, AutomationState, LibraryTab, LoudnessMeterReading, MediaAsset, TimelineClip } from '../types';
@@ -18,11 +18,8 @@ interface AudioGraph {
   input: GainNode;
   output: GainNode;
   dry: GainNode;
-  echoDelay: DelayNode;
-  echoFeedback: GainNode;
-  echoWet: GainNode;
-  convolver: ConvolverNode;
-  reverbWet: GainNode;
+  echoTaps: Array<{ delay: DelayNode; gain: GainNode }>;
+  reverbTaps: Array<{ delay: DelayNode; gain: GainNode }>;
   meter: AudioWorkletNode | GainNode;
   meterSink: GainNode;
 }
@@ -33,23 +30,23 @@ const normalizationGain = (asset: MediaAsset | undefined, settings: AudioSetting
   settings.normalizeClips && asset?.analysis ? dbToLinear(normalizationAdjustmentDb(asset.analysis, settings)) : 1
 );
 
-const impulse = (context: AudioContext, duration: number, decay: number) => {
-  const length = Math.max(1, Math.round(context.sampleRate * duration));
-  const buffer = context.createBuffer(2, length, context.sampleRate);
-  for (let channel = 0; channel < 2; channel += 1) {
-    const data = buffer.getChannelData(channel);
-    for (let index = 0; index < length; index += 1) data[index] = (Math.random() * 2 - 1) * ((1 - index / length) ** decay);
-  }
-  return buffer;
-};
-
 const configureGraph = (graph: AudioGraph, settings: AudioSettings) => {
   graph.dry.gain.value = 1;
-  graph.echoDelay.delayTime.value = (settings.echoDelayMs ?? 260) / 1000;
-  graph.echoFeedback.gain.value = settings.echoEnabled ? Math.min(.9, (settings.echoFeedback ?? 30) / 100) : 0;
-  graph.echoWet.gain.value = settings.echoEnabled ? (settings.echoMix ?? 15) / 100 : 0;
-  graph.reverbWet.gain.value = settings.reverbEnabled ? (settings.reverbMix ?? 15) / 100 : 0;
-  graph.convolver.buffer = impulse(graph.context, settings.reverbDuration ?? 1.8, settings.reverbDecay ?? 2.4);
+  const delay = Math.max(1, settings.echoDelayMs ?? 260) / 1000;
+  const feedback = Math.max(0, Math.min(.9, (settings.echoFeedback ?? 30) / 100));
+  const echoMix = settings.echoEnabled ? Math.max(0, Math.min(1, (settings.echoMix ?? 15) / 100)) : 0;
+  graph.echoTaps.forEach((tap, index) => {
+    tap.delay.delayTime.value = delay * (index + 1);
+    tap.gain.gain.value = echoMix * feedback ** index;
+  });
+  const reverbMix = settings.reverbEnabled ? Math.max(0, Math.min(1, (settings.reverbMix ?? 15) / 100)) : 0;
+  const reverbDuration = Math.max(.1, Math.min(10, settings.reverbDuration ?? 1.8));
+  const reverbDecay = Math.max(.1, settings.reverbDecay ?? 2.4);
+  const ratios = [0.025, 0.037, 0.053, 0.079, 0.113, 0.167, 0.239, 0.337, 0.463, 0.617, 0.79, 1];
+  graph.reverbTaps.forEach((tap, index) => {
+    tap.delay.delayTime.value = reverbDuration * ratios[index];
+    tap.gain.gain.value = reverbMix * .35 * Math.exp(-reverbDecay * ratios[index]);
+  });
 };
 
 const createGraph = async (onMeter: (reading: LoudnessMeterReading) => void): Promise<AudioGraph> => {
@@ -57,11 +54,8 @@ const createGraph = async (onMeter: (reading: LoudnessMeterReading) => void): Pr
   const input = context.createGain();
   const output = context.createGain();
   const dry = context.createGain();
-  const echoDelay = context.createDelay(3);
-  const echoFeedback = context.createGain();
-  const echoWet = context.createGain();
-  const convolver = context.createConvolver();
-  const reverbWet = context.createGain();
+  const echoTaps = Array.from({ length: 8 }, () => ({ delay: context.createDelay(30), gain: context.createGain() }));
+  const reverbTaps = Array.from({ length: 12 }, () => ({ delay: context.createDelay(12), gain: context.createGain() }));
   const meterSink = context.createGain();
   meterSink.gain.value = 0;
   let meter: AudioWorkletNode | GainNode;
@@ -71,12 +65,11 @@ const createGraph = async (onMeter: (reading: LoudnessMeterReading) => void): Pr
     meter.port.onmessage = event => onMeter(event.data as LoudnessMeterReading);
   } catch { meter = context.createGain(); }
   input.connect(dry).connect(output);
-  input.connect(echoDelay).connect(echoWet).connect(output);
-  echoDelay.connect(echoFeedback).connect(echoDelay);
-  input.connect(convolver).connect(reverbWet).connect(output);
+  echoTaps.forEach(tap => input.connect(tap.delay).connect(tap.gain).connect(output));
+  reverbTaps.forEach(tap => input.connect(tap.delay).connect(tap.gain).connect(output));
   output.connect(context.destination);
   output.connect(meter).connect(meterSink).connect(context.destination);
-  return { context, input, output, dry, echoDelay, echoFeedback, echoWet, convolver, reverbWet, meter, meterSink };
+  return { context, input, output, dry, echoTaps, reverbTaps, meter, meterSink };
 };
 
 const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: TimelineClip, positionMs: number, gainValue: number) => {
@@ -164,7 +157,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     if (generation !== playbackGenerationRef.current) return;
     const assetMap = new Map(assets.map(asset => [asset.id, asset]));
     const nextMusicGainDb = calculateGroupedDuckingDb(nextPositionMs, arrangement.voice, automation, audioSettings);
-    const musicVolume = dbToGain(nextMusicGainDb);
+    const musicVolume = dbToLinear(nextMusicGainDb);
     setMusicGainDb(current => Math.abs(current - nextMusicGainDb) > .05 ? nextMusicGainDb : current);
     const pending: Promise<void>[] = [];
     const sync = (clips: TimelineClip[], playing: Map<string, PlayingElement>, base: (clip: TimelineClip, asset: MediaAsset) => number) => {
@@ -184,7 +177,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
       });
     };
     sync(arrangement.music.filter(clip => clip.kind === 'music'), musicRef.current, () => musicVolume);
-    sync(arrangement.voice, voicesRef.current, () => dbToGain(audioSettings.voiceGainDb));
+    sync(arrangement.voice, voicesRef.current, () => dbToLinear(audioSettings.voiceGainDb));
     await Promise.all(pending);
   }, [arrangement, assets, audioSettings, automation, ensureGraph, tabs]);
 

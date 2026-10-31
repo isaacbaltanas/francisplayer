@@ -9,9 +9,9 @@ interface Window {
     confirmUnsavedChanges: (language: string) => Promise<'save' | 'discard' | 'cancel'>;
     onOpenProject: (callback: (projectPath: string) => void) => () => void;
     onMenuCommand: (callback: (command: 'new' | 'open' | 'save' | 'saveAs' | 'quarantine' | 'importLog' | 'export' | 'undo' | 'redo') => void) => () => void;
-    exportAudio: (payload: unknown, options: unknown) => Promise<string | null>;
+    exportAudio: (payload: unknown, options: unknown) => Promise<import('./types').ExportResult | null>;
     cancelExport: () => Promise<boolean>;
-    onExportProgress: (callback: (progress: number) => void) => () => void;
+    onExportProgress: (callback: (progress: import('./types').ExportProgress | number) => void) => () => void;
     importPaths: (request: unknown) => Promise<any>;
     generateWaveforms: (filePaths: string[]) => Promise<Array<{ path: string; waveform: number[] }>>;
     analyzeSilence: (request: unknown) => Promise<Array<{ path: string; trimStartMs: number; trimEndMs: number; trimmed: boolean }>>;

@@ -1,12 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
-import fs from 'node:fs';
-import os from 'node:os';
-import { spawn, type ChildProcess } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { Worker } from 'node:worker_threads';
 import ffmpegStatic from 'ffmpeg-static';
 import { readProjectArchive, safeProjectName } from './projectArchive.js';
-import { buildExportPlan, codecArguments, collectProcessResult, parseProgress } from './exportAudio.js';
+import { runVerifiedExport } from './exportWorkflow.js';
 import { analyzeSilence, generateWaveforms, scanImportPaths } from './importAudio.js';
 import { preparePreviewProxy, registerMediaProtocol } from './mediaProtocol.js';
 
@@ -193,32 +191,10 @@ ipcMain.handle('audio:export', async (event, payload: any, options: any) => {
   if (result.canceled || !result.filePath) return null;
   if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');
   const outputPath = result.filePath.toLowerCase().endsWith(`.${extension}`) ? result.filePath : `${result.filePath}.${extension}`;
-  const plan = buildExportPlan({ ...payload, exportOptions: options });
-  const temporaryDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'francis-export-'));
-  const filterPath = path.join(temporaryDirectory, 'mix.ffmpeg');
-  fs.writeFileSync(filterPath, plan.filterScript);
   const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
-  const args = [...plan.inputs, '-filter_complex_script', filterPath, '-map', '[out]', '-ac', String(options.channels),
-    '-ar', String(options.sampleRate), ...codecArguments(options), '-map_metadata', '-1', '-y', outputPath];
-  exportProcess = spawn(binary, args, { windowsHide: true });
-  let stderr = '';
-  exportProcess.stderr?.on('data', chunk => {
-    stderr += chunk.toString();
-    const lines = stderr.split(/[\r\n]+/);
-    stderr = lines.pop() ?? '';
-    lines.forEach(line => {
-      const progress = parseProgress(line, payload.arrangement.durationMs);
-      if (progress !== null) event.sender.send('audio:export-progress', progress);
-    });
-  });
-  try {
-    await collectProcessResult(exportProcess);
-    event.sender.send('audio:export-progress', 100);
-    return outputPath;
-  } finally {
-    exportProcess = null;
-    fs.rmSync(temporaryDirectory, { recursive: true, force: true });
-  }
+  return runVerifiedExport({ binary, payload, options, outputPath,
+    notify: progress => event.sender.send('audio:export-progress', progress),
+    setProcess: process => { exportProcess = process; } });
 });
 ipcMain.handle('audio:cancel-export', () => {
   if (!exportProcess) return false;

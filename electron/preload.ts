@@ -29,8 +29,8 @@ contextBridge.exposeInMainWorld('francisDesktop', {
   },
   exportAudio: (payload: unknown, options: unknown) => ipcRenderer.invoke('audio:export', payload, options),
   cancelExport: () => ipcRenderer.invoke('audio:cancel-export'),
-  onExportProgress: (callback: (progress: number) => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, progress: number) => callback(progress);
+  onExportProgress: (callback: (progress: any) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: any) => callback(progress);
     ipcRenderer.on('audio:export-progress', listener);
     return () => ipcRenderer.removeListener('audio:export-progress', listener);
   },

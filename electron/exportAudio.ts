@@ -3,6 +3,30 @@ import type { ChildProcess } from 'node:child_process';
 const dbToGain = (db: number) => Math.max(0, 10 ** (db / 20));
 const number = (value: number) => Number(value.toFixed(6));
 
+const effectsFilter = (settings: any) => {
+  const delays: number[] = [];
+  const decays: number[] = [];
+  if (settings.echoEnabled) {
+    const delay = Math.max(1, settings.echoDelayMs ?? 260);
+    const feedback = Math.max(0, Math.min(.9, (settings.echoFeedback ?? 30) / 100));
+    const mix = Math.max(0, Math.min(1, (settings.echoMix ?? 15) / 100));
+    for (let tap = 1; tap <= 8; tap += 1) {
+      delays.push(Math.round(delay * tap));
+      decays.push(number(mix * feedback ** (tap - 1)));
+    }
+  }
+  if (settings.reverbEnabled) {
+    const mix = Math.max(0, Math.min(1, (settings.reverbMix ?? 15) / 100));
+    const durationMs = Math.max(100, Math.min(10_000, (settings.reverbDuration ?? 1.8) * 1000));
+    const decay = Math.max(.1, settings.reverbDecay ?? 2.4);
+    [0.025, 0.037, 0.053, 0.079, 0.113, 0.167, 0.239, 0.337, 0.463, 0.617, 0.79, 1].forEach(ratio => {
+      delays.push(Math.max(1, Math.round(durationMs * ratio)));
+      decays.push(number(mix * .35 * Math.exp(-decay * ratio)));
+    });
+  }
+  return delays.length ? `,aecho=1:1:${delays.join('|')}:${decays.join('|')}` : '';
+};
+
 const groupValue = (automation: any, id: string, fallback: number) => automation?.groups?.find((item: any) => item.id === id)?.value ?? fallback;
 const groupOffset = (automation: any, id: string, fallback: number) => automation?.groups?.find((item: any) => item.id === id)?.offsetMs ?? fallback;
 
@@ -18,7 +42,7 @@ const automationExpression = (points: any[], durationMs: number, clipStartMs: nu
     const rightTime = right.position * durationMs / 1000;
     const span = Math.max(.000001, rightTime - leftTime);
     const value = `(${number(left.value / 100)}+(${number((right.value - left.value) / 100)})*(${global}-${number(leftTime)})/${number(span)})`;
-    expression = `if(lt(${global},${number(rightTime)}),${value},${expression})`;
+    expression = `if(lt(${global},${number(rightTime)}),if(lt(${global},${number(leftTime)}),${number(left.value / 100)},${value}),${expression})`;
   }
   return expression;
 };
@@ -65,24 +89,44 @@ const musicExpression = (clip: any, payload: any) => {
 export const buildExportPlan = (payload: any) => {
   const assets = new Map(payload.assets.map((asset: any) => [asset.id, asset]));
   const clips = [...payload.arrangement.music, ...payload.arrangement.voice].filter((clip: any) => clip.kind !== 'missing' && clip.assetId);
+  const resolved = clips.map((clip: any) => {
+    const asset: any = assets.get(clip.assetId);
+    if (!asset?.path) throw new Error(`Missing source for clip: ${clip.name || clip.id}`);
+    return { clip, asset };
+  });
+  const uniquePaths = [...new Set(resolved.map(({ asset }: any) => asset.path))];
+  const inputIndex = new Map(uniquePaths.map((sourcePath, index) => [sourcePath, index]));
   const inputs: string[] = [];
   const filters: string[] = [];
   const labels: string[] = [];
-  clips.forEach((clip: any, index: number) => {
-    const asset: any = assets.get(clip.assetId);
-    if (!asset?.path) return;
-    inputs.push('-i', asset.path);
+  uniquePaths.forEach(sourcePath => inputs.push('-i', sourcePath as string));
+  const sourceLabels = new Map<string, string[]>();
+  uniquePaths.forEach(sourcePath => {
+    const count = resolved.filter(({ asset }: any) => asset.path === sourcePath).length;
+    const index = inputIndex.get(sourcePath)!;
+    if (count === 1) sourceLabels.set(sourcePath, [`[${index}:a]`]);
+    else {
+      const splitLabels = Array.from({ length: count }, (_, occurrence) => `source${index}_${occurrence}`);
+      filters.push(`[${index}:a]asplit=${count}${splitLabels.map(label => `[${label}]`).join('')}`);
+      sourceLabels.set(sourcePath, splitLabels.map(label => `[${label}]`));
+    }
+  });
+  const sourceOccurrences = new Map<string, number>();
+  resolved.forEach(({ clip, asset }: any) => {
+    const occurrence = sourceOccurrences.get(asset.path) ?? 0;
+    sourceOccurrences.set(asset.path, occurrence + 1);
+    const sourceLabel = sourceLabels.get(asset.path)![occurrence];
     const tab = payload.libraryTabs.find((item: any) => item.id === clip.libraryTabId);
     const local = tab?.localAutomationEnabled ? automationExpression(tab.automationPoints, payload.arrangement.durationMs, clip.startMs) : '1';
-    const adjustment = asset.analysis ? Math.min(
+    const adjustment = asset.analysis ? Math.max(-30, Math.min(30,
       (payload.audioSettings.normalizationTargetLufs ?? -23) - asset.analysis.integratedLufs,
       (payload.audioSettings.truePeakCeilingDbtp ?? -1) - asset.analysis.truePeakDbtp
-    ) : 0;
+    )) : 0;
     const normalization = payload.audioSettings.normalizeClips && asset.analysis ? 10 ** (adjustment / 20) : 1;
     const sourceBase = clip.kind === 'music' ? musicExpression(clip, payload) : number(dbToGain(payload.audioSettings.voiceGainDb)).toString();
     const base = `(${sourceBase})*${number(normalization)}`;
     const sourceStart = (clip.sourceOffsetMs ?? 0) / 1000;
-    const chain = [`[${labels.length}:a]atrim=start=${number(sourceStart)}:end=${number(sourceStart + clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
+    const chain = [`${sourceLabel}atrim=start=${number(sourceStart)}:end=${number(sourceStart + clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${number(Math.min(clip.fadeInMs, clip.durationMs) / 1000)}`);
     if (clip.fadeOutMs) chain.push(`afade=t=out:st=${number(Math.max(0, clip.durationMs - clip.fadeOutMs) / 1000)}:d=${number(Math.min(clip.fadeOutMs, clip.durationMs) / 1000)}`);
     chain.push(`volume='(${base})*(${local})':eval=frame`, `adelay=${Math.round(clip.startMs)}|${Math.round(clip.startMs)}`);
@@ -91,16 +135,16 @@ export const buildExportPlan = (payload: any) => {
     labels.push(label);
   });
   if (labels.length === 0) throw new Error('The arrangement has no playable clips');
-  let finishing = '';
-  if (payload.audioSettings.echoEnabled) finishing += `,aecho=0.8:${number((payload.audioSettings.echoMix ?? 15) / 100)}:${Math.round(payload.audioSettings.echoDelayMs ?? 260)}:${number((payload.audioSettings.echoFeedback ?? 30) / 100)}`;
-  if (payload.audioSettings.reverbEnabled) finishing += `,aecho=0.85:${number((payload.audioSettings.reverbMix ?? 15) / 100)}:45|90|180:0.45|0.3|0.18`;
-  if (payload.exportOptions?.normalize) finishing += ',loudnorm=I=-14:LRA=11:TP=-1.5';
-  filters.push(`${labels.map(label => `[${label}]`).join('')}amix=inputs=${labels.length}:normalize=0:dropout_transition=0,atrim=0:${number(payload.arrangement.durationMs / 1000)}${finishing}[out]`);
-  return { inputs, filterScript: filters.join(';\n') };
+  const finishing = effectsFilter(payload.audioSettings);
+  const durationSeconds = number(payload.arrangement.durationMs / 1000);
+  filters.push(`${labels.map(label => `[${label}]`).join('')}amix=inputs=${labels.length}:normalize=0:dropout_transition=0${finishing},apad=whole_dur=${durationSeconds},atrim=start=0:end=${durationSeconds},asetpts=PTS-STARTPTS[out]`);
+  return { inputs, filterScript: filters.join(';\n'), manifest: resolved.map(({ clip, asset }: any) => ({
+    clipId: clip.id, assetId: asset.id, path: asset.path, startMs: clip.startMs, durationMs: clip.durationMs, kind: clip.kind
+  })) };
 };
 
 export const codecArguments = (options: any): string[] => {
-  if (options.format === 'wav') return ['-c:a', options.bitDepth === 32 ? 'pcm_f32le' : `pcm_s${options.bitDepth}le`];
+  if (options.format === 'wav') return ['-c:a', options.bitDepth === 32 ? 'pcm_f32le' : `pcm_s${options.bitDepth}le`, '-rf64', 'auto', '-write_bext', '1'];
   if (options.format === 'flac') return ['-c:a', 'flac', '-sample_fmt', options.bitDepth === 16 ? 's16' : 's32', '-compression_level', String(options.compressionLevel ?? 5)];
   if (options.format === 'aac') return ['-c:a', 'aac', '-b:a', `${options.bitrate}k`];
   if (options.format === 'ogg') return ['-c:a', 'libvorbis', '-b:a', `${options.bitrate}k`];

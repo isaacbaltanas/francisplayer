@@ -1418,7 +1418,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.23.2', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.24.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1720,7 +1720,8 @@ export default function App() {
         onPlay={() => { stopPreview(); player.play(); }}
         onPause={player.pause} onSeek={player.seek} />
     </main>
-    <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />
+    <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio}
+      onSeek={(positionMs) => { player.seek(positionMs); setExportOpen(false); }} />
     <QuarantineDialog open={quarantineOpen} items={quarantine} onClose={() => setQuarantineOpen(false)} onAdmit={admitFromQuarantine} />
     <ImportLogDialog open={importLogOpen} logs={importLogs} onClose={() => setImportLogOpen(false)} />
     {(error || importProgressJobs.length > 0) && <div className="toast-stack" aria-live="polite">

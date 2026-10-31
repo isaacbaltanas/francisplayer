@@ -206,4 +206,66 @@ export interface ExportSettings {
   bitrate: 96 | 128 | 192 | 256 | 320;
   compressionLevel: number;
   normalize: boolean;
+  verifyOutput: boolean;
+  detectSilence: boolean;
+  silenceThresholdDb: number;
+  silenceMinimumMs: number;
+}
+
+export type ExportPhase = 'preflight' | 'rendering' | 'encoding' | 'verifying' | 'publishing' | 'complete';
+
+export interface ExportProgress {
+  phase: ExportPhase;
+  percent: number;
+  detail?: string;
+}
+
+export interface ExportSilenceIssue {
+  startMs: number;
+  endMs: number;
+  durationMs: number;
+  beforeClip?: string;
+  afterClip?: string;
+}
+
+export interface ExportCheck {
+  id: string;
+  status: 'passed' | 'warning' | 'failed';
+  label: string;
+  detail: string;
+  detailKey?: string;
+  detailParams?: Record<string, string | number>;
+}
+
+export interface ExportReport {
+  verified: boolean;
+  createdAt: string;
+  outputPath: string;
+  durationMs: number;
+  expectedDurationMs: number;
+  format: string;
+  channels: number;
+  sampleRate: number;
+  clipCount: number;
+  musicClipCount: number;
+  voiceClipCount: number;
+  automationCount: number;
+  fileSha256: string;
+  decodedPcmSha256: string;
+  masterPcmSha256: string;
+  integratedLufs?: number;
+  loudnessRangeLu?: number;
+  truePeakDbtp?: number;
+  samplePeakDb?: number;
+  rmsDb?: number;
+  differenceRmsDb?: number;
+  differencePeakDb?: number;
+  silenceIssues: ExportSilenceIssue[];
+  checks: ExportCheck[];
+}
+
+export interface ExportResult {
+  outputPath: string;
+  reportPath: string;
+  report: ExportReport;
 }
