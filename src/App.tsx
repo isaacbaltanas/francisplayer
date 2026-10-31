@@ -314,10 +314,12 @@ interface SettingsPanelProps {
   trimmingVoices: boolean;
   onTrimVoices: () => void;
   onRestoreVoiceTrims: () => void;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
 }
 
 function SettingsPanel({ settings, audioSettings, automation, editingPreferences, voiceAssets, onChange, onAudioChange, onAutomationChange,
-  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims }: SettingsPanelProps) {
+  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims, collapsed, onToggleCollapsed }: SettingsPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
@@ -334,10 +336,14 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       : settings.targetDurationMs
   });
 
-  return <aside className="settings-panel">
+  return <aside className={`settings-panel ${collapsed ? 'collapsed' : ''}`}>
     <div className="panel-heading settings-title">
       <div><h2>{t('setup')}</h2></div>
-      <span className="sliders-icon">☷</span>
+      <button className="settings-collapse-button" onClick={onToggleCollapsed} aria-expanded={!collapsed}
+        aria-label={t(collapsed ? 'expandSettings' : 'collapseSettings')} title={t(collapsed ? 'expandSettings' : 'collapseSettings')}>
+        {collapsed ? '‹' : '›'}
+      </button>
+      {collapsed && <span className="collapsed-settings-label">{t('setup')}</span>}
     </div>
 
     <div className="settings-tabs">
@@ -952,6 +958,7 @@ export default function App() {
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [trimmingVoices, setTrimmingVoices] = useState(false);
+  const [settingsCollapsed, setSettingsCollapsed] = useState(() => localStorage.getItem('francis-settings-collapsed') === 'true');
   const [, setHistoryRevision] = useState(0);
   const [importProgressJobs, setImportProgressJobs] = useState<Array<{
     id: string; kind?: MediaKind; label: string; completed: number; total: number;
@@ -992,6 +999,10 @@ export default function App() {
     audio.current?.removeAttribute('src');
     assetsRef.current.forEach(asset => URL.revokeObjectURL(asset.previewUrl));
   }, []); // URLs are intentionally cleaned only when the app closes.
+
+  useEffect(() => {
+    localStorage.setItem('francis-settings-collapsed', String(settingsCollapsed));
+  }, [settingsCollapsed]);
 
   useEffect(() => window.francisDesktop?.onImportProgress(progress => {
     const id = progress.jobId ?? 'background-analysis';
@@ -1443,7 +1454,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.27.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.28.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1692,7 +1703,7 @@ export default function App() {
       </div>
     </header>
 
-    <main>
+    <main className={settingsCollapsed ? 'settings-collapsed' : ''}>
       <div className="workspace-grid">
         <div className="library-area">
           <AssetList kind="music" assets={music} tabs={libraryTabs.filter(tab => tab.kind === 'music')}
@@ -1734,7 +1745,9 @@ export default function App() {
           onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
           trimmingVoices={trimmingVoices}
           onTrimVoices={() => void trimAllVoices()}
-          onRestoreVoiceTrims={restoreVoiceTrims} />
+          onRestoreVoiceTrims={restoreVoiceTrims}
+          collapsed={settingsCollapsed}
+          onToggleCollapsed={() => setSettingsCollapsed(current => !current)} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
