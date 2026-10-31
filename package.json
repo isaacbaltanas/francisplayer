@@ -1,7 +1,8 @@
 {
   "name": "francis-player",
-  "version": "0.37.0",
+  "version": "0.37.1",
   "private": true,
+  "author": "Isaac Baltanás",
   "description": "Automatic music and voice arrangement studio",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -11,7 +12,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "package:mac": "npm run build && electron-forge package --platform=darwin",
-    "package:windows": "npm run build && electron-forge package --platform=win32 --arch=x64"
+    "package:windows": "npm run build && electron-forge package --platform=win32 --arch=x64",
+    "make:mac": "npm run build && electron-forge package --platform=darwin --arch=universal && node scripts/create-mac-dmg.cjs",
+    "make:windows": "npm run build && electron-forge make --platform=win32 --arch=x64"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
@@ -24,6 +27,7 @@
   },
   "devDependencies": {
     "@electron-forge/cli": "latest",
+    "@electron-forge/maker-squirrel": "^8.0.1",
     "@types/adm-zip": "^0.5.8",
     "@types/node": "latest",
     "@types/react": "latest",

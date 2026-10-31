@@ -8,6 +8,10 @@ module.exports = {
     icon: path.resolve(__dirname, 'assets', 'icon'),
     appBundleId: 'com.francisplayer.app',
     appCategoryType: 'public.app-category.music',
+    osxUniversal: {
+      mergeASARs: true,
+      x64ArchFiles: '**/node_modules/ffmpeg-static/ffmpeg'
+    },
     win32metadata: {
       CompanyName: 'Francis Player',
       FileDescription: 'Estudio de montaje automático para megafonías',
@@ -29,7 +33,20 @@ module.exports = {
       /^\/src($|\/)/,
       /^\/electron($|\/)/,
       /^\/tests($|\/)/,
+      /^\/out($|\/)/,
       /^\/\.git($|\/)/
     ]
-  }
+  },
+  makers: [
+    {
+      name: '@electron-forge/maker-squirrel',
+      platforms: ['win32'],
+      config: {
+        name: 'FrancisPlayer',
+        authors: 'Isaac Baltanás',
+        description: 'Estudio de montaje automático para megafonías',
+        setupIcon: path.resolve(__dirname, 'assets', 'icon.ico')
+      }
+    }
+  ]
 };
