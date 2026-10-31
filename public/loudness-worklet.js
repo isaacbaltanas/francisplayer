@@ -2,12 +2,19 @@ class FrancisLoudnessProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
     this.channels = [];
-    this.energy = [];
+    this.energyCapacity = Math.round(sampleRate * 3);
+    this.energy = new Float64Array(this.energyCapacity);
+    this.energyIndex = 0;
+    this.energyCount = 0;
+    this.energySum = 0;
     this.blocks = [];
     this.samples = 0;
     this.reportEvery = Math.round(sampleRate / 10);
     this.port.onmessage = event => {
-      if (event.data === 'reset') { this.energy = []; this.blocks = []; this.samples = 0; this.peak = 0; }
+      if (event.data === 'reset') {
+        this.energy.fill(0); this.energyIndex = 0; this.energyCount = 0; this.energySum = 0;
+        this.blocks = []; this.samples = 0; this.peak = 0;
+      }
     };
   }
 
@@ -26,6 +33,17 @@ class FrancisLoudnessProcessor extends AudioWorkletProcessor {
 
   lufs(energy) { return energy > 0 ? -0.691 + 10 * Math.log10(energy) : -120; }
 
+  recentAverage(length) {
+    const count = Math.min(length, this.energyCount);
+    if (!count) return 0;
+    let sum = 0;
+    for (let offset = 1; offset <= count; offset += 1) {
+      const index = (this.energyIndex - offset + this.energyCapacity) % this.energyCapacity;
+      sum += this.energy[index];
+    }
+    return sum / count;
+  }
+
   process(inputs, outputs) {
     const input = inputs[0];
     const output = outputs[0];
@@ -40,25 +58,26 @@ class FrancisLoudnessProcessor extends AudioWorkletProcessor {
         sum += weighted * weighted;
         peak = Math.max(peak, Math.abs(value));
       }
-      this.energy.push(sum);
-      if (this.energy.length > sampleRate * 3) this.energy.shift();
+      const replaced = this.energyCount === this.energyCapacity ? this.energy[this.energyIndex] : 0;
+      this.energy[this.energyIndex] = sum;
+      this.energyIndex = (this.energyIndex + 1) % this.energyCapacity;
+      this.energyCount = Math.min(this.energyCapacity, this.energyCount + 1);
+      this.energySum += sum - replaced;
       this.samples += 1;
       if (this.samples % Math.round(sampleRate * .1) === 0) {
-        const block = this.energy.slice(-Math.round(sampleRate * .4));
-        const blockEnergy = block.reduce((total, value) => total + value, 0) / Math.max(1, block.length);
+        const blockEnergy = this.recentAverage(Math.round(sampleRate * .4));
         if (this.lufs(blockEnergy) > -70) this.blocks.push(blockEnergy);
       }
       this.peak = Math.max(this.peak || 0, peak);
     }
     if (this.samples % this.reportEvery < input[0].length) {
       const average = values => values.reduce((total, value) => total + value, 0) / Math.max(1, values.length);
-      const momentary = this.energy.slice(-Math.round(sampleRate * .4));
-      const shortTerm = this.energy;
       const preliminary = average(this.blocks);
       const gate = this.lufs(preliminary) - 10;
       const gated = this.blocks.filter(value => this.lufs(value) >= gate);
       this.port.postMessage({
-        momentary: this.lufs(average(momentary)), shortTerm: this.lufs(average(shortTerm)),
+        momentary: this.lufs(this.recentAverage(Math.round(sampleRate * .4))),
+        shortTerm: this.lufs(this.energySum / Math.max(1, this.energyCount)),
         integrated: this.lufs(average(gated)), peakDbfs: this.peak > 0 ? 20 * Math.log10(this.peak) : -120
       });
       this.peak = 0;

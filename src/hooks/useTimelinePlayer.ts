@@ -16,6 +16,7 @@ interface PlayingElement {
 interface AudioGraph {
   context: AudioContext;
   input: GainNode;
+  output: GainNode;
   dry: GainNode;
   echoDelay: DelayNode;
   echoFeedback: GainNode;
@@ -23,6 +24,7 @@ interface AudioGraph {
   convolver: ConvolverNode;
   reverbWet: GainNode;
   meter: AudioWorkletNode | GainNode;
+  meterSink: GainNode;
 }
 
 const contains = (clip: TimelineClip, positionMs: number) => positionMs >= clip.startMs && positionMs < clip.startMs + clip.durationMs;
@@ -53,24 +55,28 @@ const configureGraph = (graph: AudioGraph, settings: AudioSettings) => {
 const createGraph = async (onMeter: (reading: LoudnessMeterReading) => void): Promise<AudioGraph> => {
   const context = new AudioContext({ sampleRate: 48_000, latencyHint: 'interactive' });
   const input = context.createGain();
+  const output = context.createGain();
   const dry = context.createGain();
   const echoDelay = context.createDelay(3);
   const echoFeedback = context.createGain();
   const echoWet = context.createGain();
   const convolver = context.createConvolver();
   const reverbWet = context.createGain();
+  const meterSink = context.createGain();
+  meterSink.gain.value = 0;
   let meter: AudioWorkletNode | GainNode;
   try {
     await context.audioWorklet.addModule('./loudness-worklet.js');
-    meter = new AudioWorkletNode(context, 'francis-loudness');
+    meter = new AudioWorkletNode(context, 'francis-loudness', { channelCount: 2, channelCountMode: 'max', outputChannelCount: [2] });
     meter.port.onmessage = event => onMeter(event.data as LoudnessMeterReading);
   } catch { meter = context.createGain(); }
-  input.connect(dry).connect(meter);
-  input.connect(echoDelay).connect(echoWet).connect(meter);
+  input.connect(dry).connect(output);
+  input.connect(echoDelay).connect(echoWet).connect(output);
   echoDelay.connect(echoFeedback).connect(echoDelay);
-  input.connect(convolver).connect(reverbWet).connect(meter);
-  meter.connect(context.destination);
-  return { context, input, dry, echoDelay, echoFeedback, echoWet, convolver, reverbWet, meter };
+  input.connect(convolver).connect(reverbWet).connect(output);
+  output.connect(context.destination);
+  output.connect(meter).connect(meterSink).connect(context.destination);
+  return { context, input, output, dry, echoDelay, echoFeedback, echoWet, convolver, reverbWet, meter, meterSink };
 };
 
 const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: TimelineClip, positionMs: number, gainValue: number) => {

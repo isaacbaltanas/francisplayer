@@ -2,6 +2,20 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.15.3] - 2026-10-31
+
+### Corregido
+
+- El medidor LUFS utiliza un búfer circular de coste constante en lugar de desplazar un array de 144.000 muestras para cada nueva muestra.
+- La reproducción deja de saturar el hilo de audio aproximadamente a partir del tercer segundo.
+- La ruta audible ya no atraviesa obligatoriamente el procesador del medidor.
+- La negociación estéreo del `AudioWorklet` se configura explícitamente con dos canales.
+
+### Cambiado
+
+- La salida maestra se conecta directamente a los altavoces y, en paralelo, al medidor mediante un sumidero silencioso.
+- Un fallo o sobrecarga del vúmetro no puede volver a silenciar la mezcla audible.
+
 ## [0.15.2] - 2026-10-31
 
 ### Corregido
