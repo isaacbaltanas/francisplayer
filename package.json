@@ -1,6 +1,6 @@
 {
   "name": "francis-player",
-  "version": "0.32.0",
+  "version": "0.33.0",
   "private": true,
   "description": "Automatic music and voice arrangement studio",
   "main": "dist-electron/main.js",

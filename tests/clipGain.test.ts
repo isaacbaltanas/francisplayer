@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { automationValueAt, clipFadeGain } from '../src/lib/clipGain';
-import { normalizationAdjustmentDb } from '../src/lib/audio';
+import { calculateDuckingDb, normalizationAdjustmentDb } from '../src/lib/audio';
 import type { TimelineClip } from '../src/types';
 
 const clip: TimelineClip = {
@@ -26,5 +26,13 @@ describe('clip and track gain', () => {
       recommendedGainDb: 0, analyzedAt: '2026-10-31T00:00:00Z' };
     expect(normalizationAdjustmentDb(analysis, { musicGainDb: 0, voiceGainDb: 0, duckingGainDb: -20, fadeDownMs: 0, fadeUpMs: 0,
       normalizationTargetLufs: -14, truePeakCeilingDbtp: -1 })).toBe(1);
+  });
+
+  it('keeps the ducking envelope continuous at voice boundaries', () => {
+    const voice = { ...clip, startMs: 5_000, durationMs: 8_000 };
+    const settings = { musicGainDb: -3, voiceGainDb: -1, duckingGainDb: -40,
+      fadeDownMs: 1_500, fadeUpMs: 2_000, fadeDownOverlapMs: 0, fadeUpOverlapMs: 0 };
+    expect(Math.abs(calculateDuckingDb(4_999, [voice], settings) - calculateDuckingDb(5_000, [voice], settings))).toBeLessThan(.03);
+    expect(Math.abs(calculateDuckingDb(12_999, [voice], settings) - calculateDuckingDb(13_000, [voice], settings))).toBeLessThan(.03);
   });
 });

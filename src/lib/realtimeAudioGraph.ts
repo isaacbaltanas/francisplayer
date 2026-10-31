@@ -11,6 +11,37 @@ export interface RealtimeAudioGraph {
   meterSink: GainNode;
 }
 
+export const smoothAudioGain = (
+  parameter: AudioParam,
+  target: number,
+  context: Pick<BaseAudioContext, 'currentTime'>,
+  rampSeconds = .045
+) => {
+  const now = context.currentTime;
+  const safeTarget = Math.max(0, Math.min(8, target));
+  const current = Math.max(0, parameter.value);
+  if (typeof parameter.cancelAndHoldAtTime === 'function') parameter.cancelAndHoldAtTime(now);
+  else {
+    parameter.cancelScheduledValues(now);
+    parameter.setValueAtTime(current, now);
+  }
+  const end = now + Math.max(.001, rampSeconds);
+  if (safeTarget > .000001 && current > .000001) parameter.exponentialRampToValueAtTime(safeTarget, end);
+  else parameter.linearRampToValueAtTime(safeTarget, end);
+};
+
+export const startAudioGain = (
+  parameter: AudioParam,
+  target: number,
+  context: Pick<BaseAudioContext, 'currentTime'>,
+  rampSeconds = .008
+) => {
+  const now = context.currentTime;
+  parameter.cancelScheduledValues(now);
+  parameter.setValueAtTime(0, now);
+  parameter.linearRampToValueAtTime(Math.max(0, Math.min(8, target)), now + Math.max(.001, rampSeconds));
+};
+
 export const configureRealtimeAudioGraph = (graph: RealtimeAudioGraph, settings: AudioSettings) => {
   graph.dry.gain.value = 1;
   const delay = Math.max(1, settings.echoDelayMs ?? 260) / 1000;

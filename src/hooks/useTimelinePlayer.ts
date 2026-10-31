@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
-import { configureRealtimeAudioGraph, createRealtimeAudioGraph, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
+import { configureRealtimeAudioGraph, createRealtimeAudioGraph, smoothAudioGain, startAudioGain, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
 import type { Arrangement, AudioSettings, AutomationState, LibraryTab, LoudnessMeterReading, MediaAsset, TimelineClip } from '../types';
 
 interface PlayingElement {
@@ -26,7 +26,8 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
   element.src = asset.previewUrl;
   element.preload = 'auto';
   const source = graph.context.createMediaElementSource(element);
-  const gain = graph.context.createGain(); gain.gain.value = safeGain(gainValue);
+  const gain = graph.context.createGain();
+  startAudioGain(gain.gain, safeGain(gainValue), graph.context);
   source.connect(gain).connect(clip.kind === 'voice' ? graph.input : graph.output);
   let cancelled = false;
   let readySettled = false;
@@ -117,7 +118,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
         const gainValue = base(clip, asset) * normalizationGain(asset, audioSettings) * clipFadeGain(clip, nextPositionMs)
           * trackAutomationGain(clip, tabs, nextPositionMs, arrangement.durationMs);
         const current = playing.get(clip.id);
-        if (current) current.gain.gain.value = safeGain(gainValue);
+        if (current) smoothAudioGain(current.gain.gain, safeGain(gainValue), graph.context);
         else {
           const created = createPlayingElement(graph, asset, clip, nextPositionMs, gainValue);
           playing.set(clip.id, created); pending.push(created.ready);

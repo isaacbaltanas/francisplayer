@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { configureRealtimeAudioGraph, type RealtimeAudioGraph } from '../src/lib/realtimeAudioGraph';
+import { configureRealtimeAudioGraph, smoothAudioGain, startAudioGain, type RealtimeAudioGraph } from '../src/lib/realtimeAudioGraph';
 
 const graph = () => ({
   dry: { gain: { value: 0 } },
@@ -8,6 +8,31 @@ const graph = () => ({
 }) as unknown as RealtimeAudioGraph;
 
 describe('realtime audio effects graph', () => {
+  it('ramps running gain changes instead of assigning discontinuous values', () => {
+    const calls: Array<[string, number, number]> = [];
+    const parameter = {
+      value: .7,
+      cancelAndHoldAtTime: (time: number) => calls.push(['hold', time, time]),
+      cancelScheduledValues: (time: number) => calls.push(['cancel', time, time]),
+      setValueAtTime: (value: number, time: number) => calls.push(['set', value, time]),
+      exponentialRampToValueAtTime: (value: number, time: number) => calls.push(['exponential', value, time]),
+      linearRampToValueAtTime: (value: number, time: number) => calls.push(['linear', value, time])
+    } as unknown as AudioParam;
+    smoothAudioGain(parameter, .2, { currentTime: 10 }, .04);
+    expect(calls).toEqual([['hold', 10, 10], ['exponential', .2, 10.04]]);
+  });
+
+  it('uses a short technical fade when a new audio source starts', () => {
+    const calls: Array<[string, number, number]> = [];
+    const parameter = {
+      value: 1,
+      cancelScheduledValues: (time: number) => calls.push(['cancel', time, time]),
+      setValueAtTime: (value: number, time: number) => calls.push(['set', value, time]),
+      linearRampToValueAtTime: (value: number, time: number) => calls.push(['linear', value, time])
+    } as unknown as AudioParam;
+    startAudioGain(parameter, .8, { currentTime: 2 }, .008);
+    expect(calls).toEqual([['cancel', 2, 2], ['set', 0, 2], ['linear', .8, 2.008]]);
+  });
   it('uses the configured echo timing, feedback, and wet mix', () => {
     const target = graph();
     configureRealtimeAudioGraph(target, {
