@@ -37,6 +37,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .project-actions button { min-width: 28px; height: 27px; border: 0; border-radius: 4px; background: transparent; color: #8b949a; font-size: 10px; cursor: pointer; }
 .project-actions button svg { width: 15px; height: 15px; display: block; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
 .project-actions button .icon-accent { stroke: #edac5f; stroke-width: 2; }
+.project-actions .problem-files-action { min-width: 34px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; gap: 3px; }
+.project-actions .problem-files-action svg { width: 13px; height: 13px; margin: 0; }
+.project-actions .problem-files-action span { min-width: 6px; font-variant-numeric: tabular-nums; }
 .project-actions button:hover { background: #343a3e; color: #ffc171; }
 .project-actions button:disabled { opacity: .28; cursor: not-allowed; }
 .project-actions .export-nav { width: auto; padding: 0 9px; color: #edac5f; font-size: 8px; font-weight: 800; letter-spacing: .08em; }

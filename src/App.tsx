@@ -1187,7 +1187,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.21.1', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.21.2', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1420,7 +1420,11 @@ export default function App() {
         <button onClick={() => void openProject()} disabled={isSaving} title={`${t('openProject')} · Ctrl/⌘O`}><ProjectActionIcon type="open" /></button>
         <button onClick={() => void saveProject(false)} disabled={isSaving} title={`${t('saveProject')} · Ctrl/⌘S`}><ProjectActionIcon type="save" /></button>
         <button onClick={() => void saveProject(true)} disabled={isSaving} title={t('saveProjectAs')}><ProjectActionIcon type="saveAs" /></button>
-        <button className={quarantine.length ? 'attention' : ''} onClick={() => setQuarantineOpen(true)} title={t('quarantine')}>Q {quarantine.length}</button>
+        <button className={`problem-files-action ${quarantine.length ? 'attention' : ''}`} onClick={() => setQuarantineOpen(true)}
+          title={t('problemFiles')} aria-label={`${t('problemFiles')}: ${quarantine.length}`}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 21 20H3z" /><path d="M12 9v5M12 17.25v.25" /></svg>
+          <span>{quarantine.length}</span>
+        </button>
         <button onClick={() => setImportLogOpen(true)} title={t('importLog')}>☷ {importLogs.length}</button>
         <button className="export-nav" onClick={() => setExportOpen(true)} disabled={!arrangement} title={t('exportMix')}>{t('export')}</button>
       </nav>
