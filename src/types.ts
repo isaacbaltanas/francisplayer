@@ -2,7 +2,7 @@ export type MediaKind = 'music' | 'voice';
 export type OrderMode = 'sequential' | 'random';
 export type VoicePlacement = 'interval' | 'uniform';
 export type SnapMode = 'smart' | 'grid' | 'edges' | 'original';
-export type InsertionMode = 'active' | 'all' | 'roundRobin' | 'random' | 'custom';
+export type InsertionMode = 'balanced' | 'active' | 'all' | 'roundRobin' | 'random' | 'custom';
 
 export interface LibraryTab {
   id: string;
@@ -22,6 +22,7 @@ export interface TrackAutomationPoint {
 export interface InsertionConfig {
   mode: InsertionMode;
   customPattern: string;
+  userSelected?: boolean;
 }
 
 export interface MediaAsset {

@@ -77,7 +77,8 @@ const initialTabs: LibraryTab[] = [
   { id: 'music-1', kind: 'music', name: 'Música 1', color: '#4f8cff', localAutomationEnabled: false, automationPoints: [] },
   { id: 'voice-1', kind: 'voice', name: 'Locuciones 1', color: '#de6ea8', localAutomationEnabled: false, automationPoints: [] }
 ];
-const defaultInsertion: InsertionConfig = { mode: 'all', customPattern: '1, 2, 1, 3' };
+const defaultMusicInsertion: InsertionConfig = { mode: 'all', customPattern: '1, 2, 1, 3' };
+const defaultVoiceInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
 
 interface ProjectSnapshot {
   name: string;
@@ -260,13 +261,13 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
 
     <div className="insertion-logic">
       <label><span>{t('insertionLogic')}</span><select value={insertion.mode}
-        onChange={(event) => onInsertionChange({ mode: event.target.value as InsertionConfig['mode'] })}>
-        <option value="active">{t('insertActive')}</option><option value="all">{t('insertAll')}</option>
+        onChange={(event) => onInsertionChange({ mode: event.target.value as InsertionConfig['mode'], userSelected: true })}>
+        <option value="balanced">{t('insertBalanced')}</option><option value="active">{t('insertActive')}</option><option value="all">{t('insertAll')}</option>
         <option value="roundRobin">{t('insertRoundRobin')}</option><option value="random">{t('insertRandom')}</option>
         <option value="custom">{t('insertCustom')}</option>
       </select></label>
       {insertion.mode === 'custom' && <input value={insertion.customPattern}
-        onChange={(event) => onInsertionChange({ customPattern: event.target.value })} placeholder="1, 2, 1, 3" />}
+        onChange={(event) => onInsertionChange({ customPattern: event.target.value, userSelected: true })} placeholder="1, 2, 1, 3" />}
       <button className="add-all-button" onClick={onAddAll} disabled={assets.length === 0}>{t('addAllToTimeline')}</button>
     </div>
 
@@ -908,8 +909,8 @@ export default function App() {
   const [libraryTabs, setLibraryTabs] = useState<LibraryTab[]>(initialTabs);
   const [activeMusicTabId, setActiveMusicTabId] = useState('music-1');
   const [activeVoiceTabId, setActiveVoiceTabId] = useState('voice-1');
-  const [musicInsertion, setMusicInsertion] = useState<InsertionConfig>(defaultInsertion);
-  const [voiceInsertion, setVoiceInsertion] = useState<InsertionConfig>(defaultInsertion);
+  const [musicInsertion, setMusicInsertion] = useState<InsertionConfig>(defaultMusicInsertion);
+  const [voiceInsertion, setVoiceInsertion] = useState<InsertionConfig>(defaultVoiceInsertion);
   const [settings, setSettings] = useState(defaultSettings);
   const [audioSettings, setAudioSettings] = useState(defaultAudioSettings);
   const [arrangement, setArrangement] = useState<Arrangement | null>(null);
@@ -1418,7 +1419,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.24.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.25.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1430,8 +1431,9 @@ export default function App() {
     audioSettings: { ...defaultAudioSettings, ...snapshot.audioSettings },
     editingPreferences: { ...defaultEditingPreferences, ...snapshot.editingPreferences },
     libraryTabs: snapshot.libraryTabs ?? initialTabs,
-    musicInsertion: snapshot.musicInsertion ?? defaultInsertion,
-    voiceInsertion: snapshot.voiceInsertion ?? defaultInsertion,
+    musicInsertion: snapshot.musicInsertion ?? defaultMusicInsertion,
+    voiceInsertion: snapshot.voiceInsertion?.mode === 'all' && !snapshot.voiceInsertion.userSelected
+      ? defaultVoiceInsertion : snapshot.voiceInsertion ?? defaultVoiceInsertion,
     assets: (snapshot.assets ?? []).map(asset => ({ ...asset, waveform: asset.waveform ?? [] })),
     quarantine: snapshot.quarantine ?? [], importLogs: snapshot.importLogs ?? []
   });
@@ -1562,7 +1564,7 @@ export default function App() {
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
     setQuarantine([]); setImportLogs([]); setProjectPath(undefined); setProjectName(t('untitledProject'));
     setSettings(defaultSettings); setAudioSettings(defaultAudioSettings); setEditingPreferences(defaultEditingPreferences);
-    setMusicInsertion(defaultInsertion); setVoiceInsertion(defaultInsertion);
+    setMusicInsertion(defaultMusicInsertion); setVoiceInsertion(defaultVoiceInsertion);
     historyRef.current = []; historyIndexRef.current = -1; historyReadyRef.current = false;
     applyingHistoryRef.current = false; savedSignatureRef.current = ''; setIsDirty(false);
     setHistoryRevision(value => value + 1);
