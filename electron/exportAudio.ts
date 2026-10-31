@@ -129,15 +129,15 @@ export const buildExportPlan = (payload: any) => {
     const chain = [`${sourceLabel}atrim=start=${number(sourceStart)}:end=${number(sourceStart + clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${number(Math.min(clip.fadeInMs, clip.durationMs) / 1000)}`);
     if (clip.fadeOutMs) chain.push(`afade=t=out:st=${number(Math.max(0, clip.durationMs - clip.fadeOutMs) / 1000)}:d=${number(Math.min(clip.fadeOutMs, clip.durationMs) / 1000)}`);
-    chain.push(`volume='(${base})*(${local})':eval=frame`, `adelay=${Math.round(clip.startMs)}|${Math.round(clip.startMs)}`);
+    chain.push(`volume='(${base})*(${local})':eval=frame${clip.kind === 'voice' ? effectsFilter(payload.audioSettings) : ''}`,
+      `adelay=${Math.round(clip.startMs)}|${Math.round(clip.startMs)}`);
     const label = `clip${labels.length}`;
     filters.push(`${chain.join(',')}[${label}]`);
     labels.push(label);
   });
   if (labels.length === 0) throw new Error('The arrangement has no playable clips');
-  const finishing = effectsFilter(payload.audioSettings);
   const durationSeconds = number(payload.arrangement.durationMs / 1000);
-  filters.push(`${labels.map(label => `[${label}]`).join('')}amix=inputs=${labels.length}:normalize=0:dropout_transition=0${finishing},apad=whole_dur=${durationSeconds},atrim=start=0:end=${durationSeconds},asetpts=PTS-STARTPTS[out]`);
+  filters.push(`${labels.map(label => `[${label}]`).join('')}amix=inputs=${labels.length}:normalize=0:dropout_transition=0,apad=whole_dur=${durationSeconds},atrim=start=0:end=${durationSeconds},asetpts=PTS-STARTPTS[out]`);
   return { inputs, filterScript: filters.join(';\n'), manifest: resolved.map(({ clip, asset }: any) => ({
     clipId: clip.id, assetId: asset.id, path: asset.path, startMs: clip.startMs, durationMs: clip.durationMs, kind: clip.kind
   })) };

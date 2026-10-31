@@ -27,7 +27,7 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
   element.preload = 'auto';
   const source = graph.context.createMediaElementSource(element);
   const gain = graph.context.createGain(); gain.gain.value = safeGain(gainValue);
-  source.connect(gain).connect(graph.input);
+  source.connect(gain).connect(clip.kind === 'voice' ? graph.input : graph.output);
   let cancelled = false;
   let readySettled = false;
   let settleReady = () => undefined;

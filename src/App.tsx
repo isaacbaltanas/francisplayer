@@ -15,6 +15,7 @@ import { MixDuckingGraph } from './components/MixDuckingGraph';
 import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
+import { duplicateReferencesForTab, filterNewFilesForTab } from './lib/importDedup';
 import { dbToLinear, normalizationAdjustmentDb } from './lib/audio';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, type RealtimeAudioGraph } from './lib/realtimeAudioGraph';
 import { anchoredScrollLeft, fitTimelineZoom, zoomFromPinch } from './lib/timelineZoom';
@@ -454,6 +455,7 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         onChange={(normalizationTargetLufs) => onAudioChange({ normalizationTargetLufs })} />
       <DbField label={t('truePeakCeiling')} help={t('truePeakCeilingHelp')} value={audioSettings.truePeakCeilingDbtp ?? -1} min={-9} max={0}
         onChange={(truePeakCeilingDbtp) => onAudioChange({ truePeakCeilingDbtp })} />
+      <p className="voice-effects-note">{t('voiceEffectsOnly')}</p>
       <Toggle label={t('enableEcho')} help={t('enableEchoHelp')} checked={audioSettings.echoEnabled ?? false}
         onChange={(echoEnabled) => onAudioChange({ echoEnabled })} />
       <MsField label={t('echoDelay')} help={t('echoDelayHelp')} value={audioSettings.echoDelayMs ?? 260}
@@ -1048,7 +1050,7 @@ export default function App() {
     if (graph) configureRealtimeAudioGraph(graph, audioSettings);
     const nodes = previewNodesRef.current;
     if (!nodes || !graph) return;
-    const processed = previewEffectsEnabled && previewMode === 'processed';
+    const processed = nodes.asset.kind === 'voice' && previewEffectsEnabled && previewMode === 'processed';
     const levelDb = nodes.asset.kind === 'music' ? audioSettings.musicGainDb : audioSettings.voiceGainDb;
     const normalization = audioSettings.normalizeClips && nodes.asset.analysis
       ? dbToLinear(normalizationAdjustmentDb(nodes.asset.analysis, audioSettings)) : 1;
@@ -1115,22 +1117,15 @@ export default function App() {
         importJobId = crypto.randomUUID();
         setImportProgressJobs(current => [...current, { id: importJobId!, kind,
           label: t(kind === 'music' ? 'analyzingMusic' : 'analyzingVoices'), completed: 0, total: inputPaths.length }]);
+        const duplicateReferences = duplicateReferencesForTab(allAssets, quarantine, tabId);
         const result = await window.francisDesktop.importPaths({ inputPaths, kind, tabId, jobId: importJobId,
           verifyIntegrity: editingPreferences.verifyFileIntegrity,
           analyzeLoudness: editingPreferences.analyzeLoudnessOnImport,
           normalizationTargetLufs: audioSettings.normalizationTargetLufs ?? -23,
           truePeakCeilingDbtp: audioSettings.truePeakCeilingDbtp ?? -1,
-          knownFingerprints: [...allAssets.map(asset => asset.fingerprint), ...quarantine.map(item => item.fingerprint)].filter(Boolean),
-          knownFiles: [...allAssets, ...quarantine].map(item => ({ path: item.path, sizeBytes: item.sizeBytes })) });
-        let destinationTabId = tabId;
+          ...duplicateReferences });
+        const destinationTabId = tabId;
         const existing = allAssets.some(asset => asset.libraryTabId === tabId);
-        if (result.folderImport && existing) {
-          destinationTabId = `${kind}-${crypto.randomUUID()}`;
-          const sameKind = libraryTabs.filter(tab => tab.kind === kind);
-          setLibraryTabs(current => [...current, { id: destinationTabId, kind, name: result.suggestedName,
-            color: tabColors[sameKind.length % tabColors.length], localAutomationEnabled: false, automationPoints: [] }]);
-          if (kind === 'music') setActiveMusicTabId(destinationTabId); else setActiveVoiceTabId(destinationTabId);
-        }
         assets = result.assets.map((asset: MediaAsset) => ({ ...asset, libraryTabId: destinationTabId,
           color: tabColors[Math.abs(asset.name.length) % tabColors.length] }));
         if (kind === 'voice' && editingPreferences.trimSilenceEnabled && assets.length && window.francisDesktop.analyzeSilence) {
@@ -1157,7 +1152,9 @@ export default function App() {
         const tab = libraryTabs.find(item => item.id === tabId);
         if (!existing && tab && /^(Música|Music|Locuciones|Voice spots?)\s+\d+$/i.test(tab.name)) updateLibraryTab(tabId, { name: result.suggestedName });
         if (result.quarantined.length) setQuarantineOpen(true);
-      } else assets = await filesToAssets(files, kind, tabId);
+      } else {
+        assets = await filesToAssets(filterNewFilesForTab(files, allAssets, tabId), kind, tabId);
+      }
       if (kind === 'music') setMusic(current => [...current, ...assets]);
       else setVoices(current => [...current, ...assets]);
       if (window.francisDesktop?.preparePreviews) void window.francisDesktop.preparePreviews(assets.map(asset => asset.path)).catch(() => undefined);
@@ -1263,7 +1260,7 @@ export default function App() {
       const levelDb = asset.kind === 'music' ? audioSettings.musicGainDb : audioSettings.voiceGainDb;
       const normalization = audioSettings.normalizeClips && asset.analysis
         ? dbToLinear(normalizationAdjustmentDb(asset.analysis, audioSettings)) : 1;
-      const processed = previewEffectsEnabled && previewMode === 'processed';
+      const processed = asset.kind === 'voice' && previewEffectsEnabled && previewMode === 'processed';
       gain.gain.value = dbToLinear(levelDb) * normalization;
       dryRoute.gain.value = processed ? 0 : 1;
       processedRoute.gain.value = processed ? 1 : 0;
@@ -1539,7 +1536,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.30.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.31.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

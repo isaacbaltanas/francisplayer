@@ -194,7 +194,7 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
     try { hash = await fingerprint(filePath); }
     catch (error: any) { return finish({ outcome: 'quarantined', item: quarantine(kind, filePath, stat.size, '', 'unreadable', error.message), log: { path: filePath, name, outcome: 'quarantined', detail: error.message } }); }
     if (known.has(hash) || knownFallback.has(`${path.resolve(filePath)}:${stat.size}`)) {
-      return finish({ outcome: 'duplicate', log: { path: filePath, name, outcome: 'duplicate', detail: 'Exact file already present' } });
+      return finish({ outcome: 'duplicate', log: { path: filePath, name, outcome: 'duplicate', detail: 'Exact file already present in this tab' } });
     }
     known.add(hash);
     if (!audioExtensions.has(path.extname(filePath).toLowerCase())) {
