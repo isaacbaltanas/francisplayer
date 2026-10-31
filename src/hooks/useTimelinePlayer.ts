@@ -22,6 +22,7 @@ interface PlayingBuffer {
   gain: GainNode;
   declick: GainNode;
   targetGain: number;
+  release: () => void;
   cancel: () => void;
 }
 
@@ -113,13 +114,19 @@ const createPlayingBuffer = (
   declick.gain.linearRampToValueAtTime(0, technicalFade.endTime);
   source.start(when, Math.max(0, offsetMs) / 1000, remainingMs / 1000);
   let cancelled = false;
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    source.disconnect(); gain.disconnect(); declick.disconnect();
+  };
   return {
-    clipId: clip.id, source, gain, declick, targetGain,
+    clipId: clip.id, source, gain, declick, targetGain, release,
     cancel: () => {
       if (cancelled) return;
       cancelled = true;
       try { source.stop(); } catch { /* Already stopped. */ }
-      source.disconnect(); gain.disconnect(); declick.disconnect();
+      release();
     }
   };
 };
@@ -237,10 +244,13 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     const voicePositionMs = mediaClockPosition() ?? nextPositionMs;
     positionRef.current = voicePositionMs;
     const upcomingVoices = clipsInLookahead(arrangement.voice, voicePositionMs, VOICE_LOOKAHEAD_MS);
-    const upcomingIds = new Set(upcomingVoices.map(clip => clip.id));
-    voicesRef.current.forEach((item, id) => {
-      if (!upcomingIds.has(id)) { dispose(item); voicesRef.current.delete(id); }
-    });
+    const registerVoice = (clipId: string, created: PlayingBuffer) => {
+      voicesRef.current.set(clipId, created);
+      created.source.onended = () => {
+        created.release();
+        if (voicesRef.current.get(clipId) === created) voicesRef.current.delete(clipId);
+      };
+    };
     upcomingVoices.forEach(clip => {
       const asset = assetMap.get(clip.assetId!); if (!asset) return;
       const samplePosition = Math.max(voicePositionMs, clip.startMs);
@@ -262,7 +272,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
       if (buffer) {
         voiceBuffersRef.current.get(asset.id)!.lastUsed = performance.now();
         const created = createPlayingBuffer(graph, buffer, clip, voicePositionMs, gainValue);
-        if (created) voicesRef.current.set(clip.id, created);
+        if (created) registerVoice(clip.id, created);
         return;
       }
       void decodeVoiceBuffer(graph, asset).then(decoded => {
@@ -273,7 +283,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
           * clipFadeGain(clip, Math.max(currentPosition, clip.startMs))
           * trackAutomationGain(clip, tabs, Math.max(currentPosition, clip.startMs), arrangement.durationMs);
         const created = createPlayingBuffer(graph, decoded, clip, currentPosition, currentGain);
-        if (created) voicesRef.current.set(clip.id, created);
+        if (created) registerVoice(clip.id, created);
       });
     });
   }, [arrangement, assets, audioSettings, automation, decodeVoiceBuffer, ensureGraph, mediaClockPosition, tabs]);
