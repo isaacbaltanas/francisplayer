@@ -306,8 +306,6 @@ interface SettingsPanelProps {
   audioSettings: AudioSettings;
   automation: AutomationState | null;
   editingPreferences: EditingPreferences;
-  mounted: boolean;
-  canMount: boolean;
   voiceAssets: MediaAsset[];
   onChange: (patch: Partial<ArrangementSettings>) => void;
   onAudioChange: (patch: Partial<AudioSettings>) => void;
@@ -316,11 +314,10 @@ interface SettingsPanelProps {
   trimmingVoices: boolean;
   onTrimVoices: () => void;
   onRestoreVoiceTrims: () => void;
-  onMount: () => void;
 }
 
-function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, voiceAssets, onChange, onAudioChange, onAutomationChange,
-  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims, onMount }: SettingsPanelProps) {
+function SettingsPanel({ settings, audioSettings, automation, editingPreferences, voiceAssets, onChange, onAudioChange, onAutomationChange,
+  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims }: SettingsPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
@@ -359,11 +356,13 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         </div>
       </label>
 
-      <Toggle label={t('durationFromVoices')} help={t('durationFromVoicesHelp')} checked={settings.durationFromVoices ?? false} onChange={(durationFromVoices) => onChange({
-        durationFromVoices,
-        ...(durationFromVoices ? { voicePlacement: 'interval' as const } : {}),
-        ...(durationFromVoices && voiceAssets.length ? { targetDurationMs: voiceScheduleDuration(voiceAssets, settings.voiceIntervalMs, settings.allowVoiceOverlap) } : {})
-      })} />
+      <div className="settings-divider-row full">
+        <Toggle label={t('durationFromVoices')} help={t('durationFromVoicesHelp')} checked={settings.durationFromVoices ?? false} onChange={(durationFromVoices) => onChange({
+          durationFromVoices,
+          ...(durationFromVoices ? { voicePlacement: 'interval' as const } : {}),
+          ...(durationFromVoices && voiceAssets.length ? { targetDurationMs: voiceScheduleDuration(voiceAssets, settings.voiceIntervalMs, settings.allowVoiceOverlap) } : {})
+        })} />
+      </div>
 
       <Segmented label={t('musicOrder')} help={t('musicOrderHelp')} value={settings.musicOrder} options={[
         ['sequential', t('sequential')], ['random', t('random')]
@@ -519,9 +518,6 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       <p className="settings-help">{t('snapControlHint')}</p>
     </div>}
 
-    <button className="mount-button" title={t('mountHelp')} disabled={!canMount} onClick={onMount}>
-      <span className="mount-symbol">✦</span>{t(mounted ? 'remount' : 'mount')}<span className="arrow">→</span>
-    </button>
   </aside>;
 }
 
@@ -725,6 +721,8 @@ interface TimelineProps {
   meter: LoudnessMeterReading;
   automation: AutomationState | null;
   editingPreferences: EditingPreferences;
+  canMount: boolean;
+  onMount: () => void;
   onAutomationChange: (state: AutomationState) => void;
   onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
   onMoveClip: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null, isolated: boolean) => void;
@@ -738,7 +736,7 @@ interface TimelineProps {
   onSeek: (positionMs: number) => void;
 }
 
-function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences,
+function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences, canMount, onMount,
   onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClips, onFadeChange, onSourceTrimChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
@@ -870,6 +868,9 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
             <output>{zoom < .1 ? (zoom * 100).toFixed(1) : Math.round(zoom * 100)}%</output>
             <button onClick={() => setZoom(Math.min(4, zoom * 1.25))}>＋</button></div>
         </div>
+        <button className="timeline-mount-button" title={t('mountHelp')} disabled={!canMount} onClick={onMount}>
+          <span>{t(arrangement ? 'remount' : 'mount')}</span><b aria-hidden="true">→</b>
+        </button>
       </div>
     </div>
 
@@ -1442,7 +1443,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.26.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.27.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1725,8 +1726,7 @@ export default function App() {
             }}
             onInsertionChange={(patch) => setVoiceInsertion(current => ({ ...current, ...patch }))} />
         </div>
-        <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} editingPreferences={editingPreferences} mounted={Boolean(arrangement)}
-          canMount={music.length + voices.length > 0}
+        <SettingsPanel settings={settings} audioSettings={audioSettings} automation={automation} editingPreferences={editingPreferences}
           voiceAssets={scheduledVoiceSequence}
           onChange={changeArrangementSettings}
           onAudioChange={changeAudioSettings}
@@ -1734,11 +1734,11 @@ export default function App() {
           onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
           trimmingVoices={trimmingVoices}
           onTrimVoices={() => void trimAllVoices()}
-          onRestoreVoiceTrims={restoreVoiceTrims}
-          onMount={mount} />
+          onRestoreVoiceTrims={restoreVoiceTrims} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
+        canMount={music.length + voices.length > 0} onMount={mount}
         onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
         onMoveClip={moveClip} onRemoveClips={removeClips} onFadeChange={changeClipFade} onSourceTrimChange={changeClipSourceTrim}
