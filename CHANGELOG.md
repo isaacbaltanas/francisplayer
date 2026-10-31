@@ -2,6 +2,23 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.15.0] - 2026-10-31
+
+### Añadido
+
+- Formas de onda reales de 256 picos dentro de cada clip de música y locución.
+- Extracción eficiente de ondas mediante FFmpeg durante la importación masiva.
+- Reconstrucción automática de ondas al abrir proyectos antiguos que todavía no las contenían.
+- Botón «Encajar» para mostrar inmediatamente la duración completa en el ancho disponible.
+
+### Cambiado
+
+- El límite inferior del zoom se calcula según la duración real: una pista de 74 minutos puede llegar aproximadamente al 1,9 %.
+- El gesto de pellizcar permite alejar hasta que toda la pista queda visible, en lugar de detenerse en 50 %.
+- Los botones de zoom emplean pasos proporcionales para funcionar con escalas muy pequeñas y muy grandes.
+- Los clips truncados muestran únicamente la parte de la forma de onda que realmente se reproduce.
+- Las ondas se guardan dentro del proyecto `.francis` para que sigan disponibles al trasladarlo a otro ordenador.
+
 ## [0.14.3] - 2026-10-31
 
 ### Corregido

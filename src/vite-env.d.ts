@@ -12,6 +12,7 @@ interface Window {
     cancelExport: () => Promise<boolean>;
     onExportProgress: (callback: (progress: number) => void) => () => void;
     importPaths: (request: unknown) => Promise<any>;
+    generateWaveforms: (filePaths: string[]) => Promise<Array<{ path: string; waveform: number[] }>>;
     onImportProgress: (callback: (progress: { completed: number; total: number }) => void) => () => void;
   };
 }

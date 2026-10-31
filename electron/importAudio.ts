@@ -83,6 +83,30 @@ const inspectAudio = (binary: string, filePath: string, verifyIntegrity: boolean
   });
 });
 
+export const waveformFromPcm = (pcm: Buffer, bins = 256) => {
+  const sampleCount = Math.floor(pcm.length / 4);
+  if (!sampleCount) return [];
+  const binSize = Math.max(1, Math.ceil(sampleCount / bins));
+  return Array.from({ length: bins }, (_, bin) => {
+    let peak = 0;
+    const end = Math.min(sampleCount, (bin + 1) * binSize);
+    for (let sample = bin * binSize; sample < end; sample += 1) {
+      const value = Math.abs(pcm.readFloatLE(sample * 4));
+      if (Number.isFinite(value)) peak = Math.max(peak, value);
+    }
+    return Math.round(Math.max(.025, Math.min(1, peak)) * 1000) / 1000;
+  });
+};
+
+export const extractWaveform = (binary: string, filePath: string) => new Promise<number[]>(resolve => {
+  const process = spawn(binary, ['-hide_banner', '-loglevel', 'error', '-i', filePath, '-map', '0:a:0',
+    '-ac', '1', '-ar', '1000', '-f', 'f32le', 'pipe:1'], { windowsHide: true });
+  const chunks: Buffer[] = [];
+  process.stdout.on('data', chunk => chunks.push(Buffer.from(chunk)));
+  process.once('error', () => resolve([]));
+  process.once('exit', code => resolve(code === 0 ? waveformFromPcm(Buffer.concat(chunks)) : []));
+});
+
 const parallelMap = async <T, R>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<R>) => {
   const results = new Array<R>(items.length);
   let cursor = 0;
@@ -91,6 +115,17 @@ const parallelMap = async <T, R>(items: T[], concurrency: number, work: (item: T
   });
   await Promise.all(workers);
   return results;
+};
+
+export const generateWaveforms = async (binary: string, filePaths: string[], onProgress?: (completed: number, total: number) => void) => {
+  const uniquePaths = [...new Set(filePaths)];
+  let completed = 0;
+  return parallelMap(uniquePaths, 4, async filePath => {
+    const waveform = await extractWaveform(binary, filePath);
+    completed += 1;
+    onProgress?.(completed, uniquePaths.length);
+    return { path: filePath, waveform };
+  });
 };
 
 export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity, analyzeLoudness, normalizationTargetLufs = -23,
@@ -124,10 +159,11 @@ export const scanImportPaths = async ({ inputPaths, kind, tabId, verifyIntegrity
       return finish({ outcome: 'quarantined', item: { ...quarantine(kind, filePath, stat.size, hash, reason, inspected.detail), durationMs: inspected.durationMs },
         log: { path: filePath, name, outcome: 'quarantined', detail: inspected.detail } });
     }
+    const waveform = await extractWaveform(ffmpegPath, filePath);
     return finish({ outcome: 'imported', asset: {
       id: `${kind}-${Date.now()}-${index}-${crypto.randomUUID()}`, kind, name: path.basename(filePath, path.extname(filePath)),
       durationMs: inspected.durationMs, sizeBytes: stat.size, path: filePath, previewUrl: mediaUrlForPath(filePath),
-      color: '#4f8cff', libraryTabId: tabId, waveform: [], fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked', analysis: inspected.analysis
+      color: '#4f8cff', libraryTabId: tabId, waveform, fingerprint: hash, integrity: verifyIntegrity ? 'valid' : 'unchecked', analysis: inspected.analysis
     }, log: { path: filePath, name, outcome: 'imported', detail: verifyIntegrity ? 'Fully decoded and verified' : 'Metadata verified' } });
   });
   const assets = results.filter(item => item.outcome === 'imported').map(item => item.asset);

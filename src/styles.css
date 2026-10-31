@@ -183,6 +183,7 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .zoom-control { display: flex; align-items: center; gap: 5px; color: #737a80; font-size: 9px; }
 .zoom-control > span { margin-right: 5px; text-transform: uppercase; letter-spacing: .1em; }
 .zoom-control button { width: 25px; height: 25px; border: 1px solid #373d42; background: #202429; color: #a6acb1; cursor: pointer; }
+.zoom-control .fit-zoom-button { width: auto; min-width: 38px; padding: 0 7px; color: #e5a85e; font-size: 7px; font-weight: 800; letter-spacing: .05em; }
 .zoom-control output { min-width: 42px; text-align: center; font: 9px ui-monospace, monospace; }
 .timeline-empty { flex: 1; display: grid; place-content: center; justify-items: center; color: #666e74; }
 .timeline-empty p { font-size: 11px; }.timeline-empty-icon { font-size: 34px; color: #343b40; letter-spacing: 5px; }

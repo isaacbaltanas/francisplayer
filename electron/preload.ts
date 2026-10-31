@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('francisDesktop', {
     return () => ipcRenderer.removeListener('audio:export-progress', listener);
   },
   importPaths: (request: unknown) => ipcRenderer.invoke('media:import-paths', request),
+  generateWaveforms: (filePaths: string[]) => ipcRenderer.invoke('media:generate-waveforms', filePaths),
   onImportProgress: (callback: (progress: { completed: number; total: number }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: { completed: number; total: number }) => callback(progress);
     ipcRenderer.on('media:import-progress', listener);

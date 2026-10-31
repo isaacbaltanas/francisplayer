@@ -15,7 +15,7 @@ import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
 import { normalizationAdjustmentDb } from './lib/audio';
-import { anchoredScrollLeft, zoomFromPinch } from './lib/timelineZoom';
+import { anchoredScrollLeft, fitTimelineZoom, zoomFromPinch } from './lib/timelineZoom';
 import appIconUrl from '../assets/icon.svg';
 import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
 
@@ -473,6 +473,8 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
   const style = { left: `${left}%`, width: `${width}%`, backgroundColor: clip.color };
   const fadeInPercent = Math.min(100, (clip.fadeInMs ?? 0) / clip.durationMs * 100);
   const fadeOutPercent = Math.min(100, (clip.fadeOutMs ?? 0) / clip.durationMs * 100);
+  const visibleWaveform = clip.sourceDurationMs && clip.durationMs < clip.sourceDurationMs
+    ? waveform.slice(0, Math.max(1, Math.round(waveform.length * clip.durationMs / clip.sourceDurationMs))) : waveform;
   const startFadeDrag = (event: React.PointerEvent<HTMLButtonElement>, edge: 'in' | 'out') => {
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     setFadeDrag({ edge, clientX: event.clientX, initialMs: edge === 'in' ? (clip.fadeInMs ?? 0) : (clip.fadeOutMs ?? 0) });
@@ -508,8 +510,8 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
       event.preventDefault(); event.stopPropagation();
       setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
     }}>
-    {clip.kind !== 'missing' && <svg className="clip-waveform" viewBox={`0 0 ${Math.max(1, waveform.length)} 100`} preserveAspectRatio="none" aria-hidden="true">
-      {waveform.map((peak, index) => <line key={index} x1={index + .5} x2={index + .5} y1={50 - peak * 43} y2={50 + peak * 43} />)}
+    {clip.kind !== 'missing' && <svg className="clip-waveform" viewBox={`0 0 ${Math.max(1, visibleWaveform.length)} 100`} preserveAspectRatio="none" aria-hidden="true">
+      {visibleWaveform.map((peak, index) => <line key={index} x1={index + .5} x2={index + .5} y1={50 - peak * 43} y2={50 + peak * 43} />)}
     </svg>}
     {clip.kind !== 'missing' && <svg className="clip-fades" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
       {fadeInPercent > 0 && <path d={`M0 100 Q ${fadeInPercent * .35} 10 ${fadeInPercent} 0`} />}
@@ -569,11 +571,12 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
   const canvasRef = useRef<HTMLDivElement>(null);
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const zoomAnchorRef = useRef<{ contentRatio: number; pointerOffset: number } | null>(null);
+  const fitZoom = fitTimelineZoom(arrangement?.durationMs ?? 0);
   const width = arrangement ? Math.max(100, arrangement.durationMs / 60_000 * 70 * zoom) : 100;
   const markerStepMs = arrangement && arrangement.durationMs <= 15 * 60_000 ? 60_000 : 5 * 60_000;
   const markers = arrangement ? Array.from({ length: Math.floor(arrangement.durationMs / markerStepMs) + 1 }, (_, index) => index * markerStepMs) : [];
   const timelineTabs = [...tabs.filter(tab => tab.kind === 'voice'), ...tabs.filter(tab => tab.kind === 'music')];
-  const waveforms = new Map(assets.map(asset => [asset.id, asset.waveform]));
+  const waveforms = new Map(assets.map(asset => [asset.id, asset.waveform ?? []]));
   const voiceOverlaps = arrangement ? overlappingClipIds(arrangement.voice) : new Set<string>();
 
   useEffect(() => {
@@ -590,11 +593,13 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
       };
       const deltaY = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * 16
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? event.deltaY * scroll.clientHeight : event.deltaY;
-      setZoom(current => zoomFromPinch(current, deltaY));
+      setZoom(current => zoomFromPinch(current, deltaY, fitZoom));
     };
     scroll.addEventListener('wheel', handleWheel, { passive: false });
     return () => scroll.removeEventListener('wheel', handleWheel);
-  }, [arrangement]);
+  }, [arrangement, fitZoom]);
+
+  useEffect(() => setZoom(current => Math.max(fitZoom, Math.min(4, current))), [fitZoom]);
 
   useLayoutEffect(() => {
     const scroll = timelineScrollRef.current;
@@ -615,8 +620,11 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
         <option value="smart">{t('snapSmart')}</option><option value="grid">{t('snapGrid')}</option>
         <option value="edges">{t('snapEdges')}</option><option value="original">{t('snapOriginal')}</option>
       </select>
-      <div className="zoom-control" title={t('trackpadZoomHint')}><span>{t('zoom')}</span><button onClick={() => setZoom(Math.max(.5, zoom - .25))}>−</button>
-        <output>{Math.round(zoom * 100)}%</output><button onClick={() => setZoom(Math.min(4, zoom + .25))}>＋</button></div>
+      <div className="zoom-control" title={t('trackpadZoomHint')}><span>{t('zoom')}</span>
+        <button className="fit-zoom-button" onClick={() => setZoom(fitZoom)} title={t('fitTimeline')}>{t('fit')}</button>
+        <button onClick={() => setZoom(Math.max(fitZoom, zoom / 1.25))}>−</button>
+        <output>{zoom < .1 ? (zoom * 100).toFixed(1) : Math.round(zoom * 100)}%</output>
+        <button onClick={() => setZoom(Math.min(4, zoom * 1.25))}>＋</button></div>
       </div>
     </header>
 
@@ -714,6 +722,7 @@ export default function App() {
   const audio = useRef<HTMLAudioElement | null>(null);
   const previewGeneration = useRef(0);
   const activePreviewRef = useRef<string | null>(null);
+  const waveformHydrationGeneration = useRef(0);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const musicSequence = useMemo(() => createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
     activeMusicTabId, musicInsertion, settings.seed), [libraryTabs, music, activeMusicTabId, musicInsertion, settings.seed]);
@@ -1018,7 +1027,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.14.3', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.15.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1043,10 +1052,12 @@ export default function App() {
       const opened = await window.francisDesktop.openProject(requestedPath);
       if (!opened) return;
       const project = opened.project as ProjectDocument;
+      const projectAssets = project.assets.map(asset => ({ ...asset, waveform: asset.waveform ?? [] }));
+      const hydrationGeneration = ++waveformHydrationGeneration.current;
       player.stop(); stopPreview();
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
-      setMusic(project.assets.filter(asset => asset.kind === 'music'));
-      setVoices(project.assets.filter(asset => asset.kind === 'voice'));
+      setMusic(projectAssets.filter(asset => asset.kind === 'music'));
+      setVoices(projectAssets.filter(asset => asset.kind === 'voice'));
       setSettings({ ...defaultSettings, ...project.settings,
         musicFillMode: project.settings.musicFillMode ?? (project.settings.repeatMusic ? 'repeat' : 'silence') });
       setAudioSettings({ ...defaultAudioSettings, ...project.audioSettings }); setEditingPreferences({ ...defaultEditingPreferences, ...project.editingPreferences });
@@ -1055,12 +1066,26 @@ export default function App() {
       setArrangement(project.arrangement); setAutomation(project.automation);
       setQuarantine(project.quarantine ?? []); setImportLogs(project.importLogs ?? []);
       setProjectPath(opened.projectPath); setProjectName(project.name);
+      const missingWaveforms = projectAssets.filter(asset => asset.waveform.length === 0);
+      if (missingWaveforms.length && window.francisDesktop?.generateWaveforms) {
+        setImportProgress({ completed: 0, total: missingWaveforms.length });
+        void window.francisDesktop.generateWaveforms(missingWaveforms.map(asset => asset.path)).then(generated => {
+          if (waveformHydrationGeneration.current !== hydrationGeneration) return;
+          const byPath = new Map(generated.map(item => [item.path, item.waveform]));
+          const hydrate = (assets: MediaAsset[]) => assets.map(asset => byPath.has(asset.path)
+            ? { ...asset, waveform: byPath.get(asset.path) ?? [] } : asset);
+          setMusic(hydrate); setVoices(hydrate);
+        }).finally(() => {
+          if (waveformHydrationGeneration.current === hydrationGeneration) setImportProgress(null);
+        });
+      }
     } catch {
       setError(t('projectOpenError'));
     }
   };
 
   const newProject = () => {
+    waveformHydrationGeneration.current += 1;
     player.stop(); stopPreview();
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { inferCollectionName, parseLoudnessReport } from '../electron/importAudio';
+import { inferCollectionName, parseLoudnessReport, waveformFromPcm } from '../electron/importAudio';
 
 describe('mass import naming', () => {
+  it('reduces decoded PCM to normalized waveform peaks', () => {
+    const pcm = Buffer.alloc(8 * 4);
+    [0, .25, -.5, 1.4, .1, -.2, .75, 0].forEach((sample, index) => pcm.writeFloatLE(sample, index * 4));
+    expect(waveformFromPcm(pcm, 4)).toEqual([.25, 1, .2, .75]);
+  });
+
   it('uses the most common speaker name and removes production words', () => {
     expect(inferCollectionName([
       '01_Juan_Garcia_cuña_coche_final.wav',
