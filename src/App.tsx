@@ -804,6 +804,7 @@ export default function App() {
       } else assets = await filesToAssets(files, kind, tabId);
       if (kind === 'music') setMusic(current => [...current, ...assets]);
       else setVoices(current => [...current, ...assets]);
+      if (window.francisDesktop?.preparePreviews) void window.francisDesktop.preparePreviews(assets.map(asset => asset.path)).catch(() => undefined);
       setArrangement(null);
       setAutomation(null);
     } catch {
@@ -1040,7 +1041,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.15.1', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.15.2', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1079,6 +1080,7 @@ export default function App() {
       setArrangement(project.arrangement); setAutomation(project.automation);
       setQuarantine(project.quarantine ?? []); setImportLogs(project.importLogs ?? []);
       setProjectPath(opened.projectPath); setProjectName(project.name);
+      if (window.francisDesktop?.preparePreviews) void window.francisDesktop.preparePreviews(projectAssets.map(asset => asset.path)).catch(() => undefined);
       const missingWaveforms = projectAssets.filter(asset => asset.waveform.length < 2048);
       if (missingWaveforms.length && window.francisDesktop?.generateWaveforms) {
         setImportProgress({ completed: 0, total: missingWaveforms.length });
@@ -1205,7 +1207,7 @@ export default function App() {
           onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
           onMount={mount} />
       </div>
-      <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying} positionMs={player.positionMs}
+      <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
         onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}

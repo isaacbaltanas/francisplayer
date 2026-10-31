@@ -9,6 +9,7 @@ interface PlayingElement {
   element: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
   gain: GainNode;
+  ready: Promise<void>;
   cancel: () => void;
 }
 
@@ -81,24 +82,44 @@ const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: Timeli
   const gain = graph.context.createGain(); gain.gain.value = safeGain(gainValue);
   source.connect(gain).connect(graph.input);
   let cancelled = false;
-  const start = () => {
-    if (cancelled) return;
-    element.currentTime = Math.max(0, (positionMs - clip.startMs) / 1000);
-    void element.play().then(() => { if (cancelled) element.pause(); }).catch(() => undefined);
+  let readySettled = false;
+  let settleReady = () => undefined;
+  const ready = new Promise<void>(resolve => { settleReady = () => { if (!readySettled) { readySettled = true; resolve(); } }; });
+  const start = async () => {
+    if (cancelled) { settleReady(); return; }
+    try {
+      const targetTime = Math.max(0, (positionMs - clip.startMs) / 1000);
+      if (targetTime > .01) {
+        await new Promise<void>(resolve => {
+          let settled = false;
+          const finish = () => { if (!settled) { settled = true; element.removeEventListener('seeked', finish); resolve(); } };
+          element.addEventListener('seeked', finish, { once: true });
+          element.currentTime = targetTime;
+          if (!element.seeking && Math.abs(element.currentTime - targetTime) < .02) finish();
+          window.setTimeout(finish, 2_000);
+        });
+      } else element.currentTime = 0;
+      if (cancelled) { settleReady(); return; }
+      await element.play();
+      if (cancelled) element.pause();
+    } catch { /* A missing or unreadable clip must not lock the transport. */ }
+    settleReady();
   };
-  if (element.readyState >= HTMLMediaElement.HAVE_METADATA) start(); else element.addEventListener('loadedmetadata', start, { once: true });
+  if (element.readyState >= HTMLMediaElement.HAVE_METADATA) void start(); else element.addEventListener('loadedmetadata', start, { once: true });
   const cancel = () => {
     cancelled = true;
     element.removeEventListener('loadedmetadata', start);
     element.pause(); element.removeAttribute('src'); element.load();
     source.disconnect(); gain.disconnect();
+    settleReady();
   };
-  return { clipId: clip.id, element, source, gain, cancel };
+  return { clipId: clip.id, element, source, gain, ready, cancel };
 };
 
 export const useTimelinePlayer = (arrangement: Arrangement | null, assets: MediaAsset[], audioSettings: AudioSettings,
   automation: AutomationState | null, tabs: LibraryTab[] = []) => {
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [positionMs, setPositionMs] = useState(0);
   const [musicGainDb, setMusicGainDb] = useState(audioSettings.musicGainDb);
   const [meter, setMeter] = useState<LoudnessMeterReading>({ momentary: -120, shortTerm: -120, integrated: -120, peakDbfs: -120 });
@@ -122,6 +143,15 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     musicRef.current.forEach(dispose); musicRef.current.clear(); voicesRef.current.forEach(dispose); voicesRef.current.clear();
   }, []);
 
+  const mediaClockPosition = useCallback(() => {
+    if (!arrangement) return null;
+    const clips = new Map([...arrangement.music, ...arrangement.voice].map(clip => [clip.id, clip]));
+    const current = [...musicRef.current.values(), ...voicesRef.current.values()]
+      .find(item => !item.element.paused && item.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
+    const clip = current ? clips.get(current.clipId) : undefined;
+    return current && clip ? clip.startMs + current.element.currentTime * 1000 : null;
+  }, [arrangement]);
+
   const syncElements = useCallback(async (nextPositionMs: number, generation = playbackGenerationRef.current) => {
     if (!arrangement) return;
     const graph = await ensureGraph();
@@ -130,6 +160,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     const nextMusicGainDb = calculateGroupedDuckingDb(nextPositionMs, arrangement.voice, automation, audioSettings);
     const musicVolume = dbToGain(nextMusicGainDb);
     setMusicGainDb(current => Math.abs(current - nextMusicGainDb) > .05 ? nextMusicGainDb : current);
+    const pending: Promise<void>[] = [];
     const sync = (clips: TimelineClip[], playing: Map<string, PlayingElement>, base: (clip: TimelineClip, asset: MediaAsset) => number) => {
       const active = clips.filter(clip => clip.assetId && contains(clip, nextPositionMs));
       const ids = new Set(active.map(clip => clip.id));
@@ -140,20 +171,24 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
           * trackAutomationGain(clip, tabs, nextPositionMs, arrangement.durationMs);
         const current = playing.get(clip.id);
         if (current) current.gain.gain.value = safeGain(gainValue);
-        else playing.set(clip.id, createPlayingElement(graph, asset, clip, nextPositionMs, gainValue));
+        else {
+          const created = createPlayingElement(graph, asset, clip, nextPositionMs, gainValue);
+          playing.set(clip.id, created); pending.push(created.ready);
+        }
       });
     };
     sync(arrangement.music.filter(clip => clip.kind === 'music'), musicRef.current, () => musicVolume);
     sync(arrangement.voice, voicesRef.current, () => dbToGain(audioSettings.voiceGainDb));
+    await Promise.all(pending);
   }, [arrangement, assets, audioSettings, automation, ensureGraph, tabs]);
 
   const pause = useCallback(() => {
     playbackGenerationRef.current += 1;
-    setIsPlaying(false); musicRef.current.forEach(item => item.element.pause()); voicesRef.current.forEach(item => item.element.pause());
-  }, []);
+    setIsPreparing(false); setIsPlaying(false); stopElements();
+  }, [stopElements]);
   const stop = useCallback(() => {
     playbackGenerationRef.current += 1;
-    setIsPlaying(false); stopElements(); positionRef.current = 0; basePositionRef.current = 0; setPositionMs(0); setMusicGainDb(audioSettings.musicGainDb);
+    setIsPreparing(false); setIsPlaying(false); stopElements(); positionRef.current = 0; basePositionRef.current = 0; setPositionMs(0); setMusicGainDb(audioSettings.musicGainDb);
     if (graphRef.current?.meter instanceof AudioWorkletNode) graphRef.current.meter.port.postMessage('reset');
     setMeter({ momentary: -120, shortTerm: -120, integrated: -120, peakDbfs: -120 });
   }, [audioSettings.musicGainDb, stopElements]);
@@ -162,9 +197,16 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     playbackGenerationRef.current += 1;
     const generation = playbackGenerationRef.current;
     if (positionRef.current >= arrangement.durationMs) { positionRef.current = 0; setPositionMs(0); }
-    stopElements(); basePositionRef.current = positionRef.current; startedAtRef.current = performance.now();
-    void syncElements(positionRef.current, generation); setIsPlaying(true);
-  }, [arrangement, stopElements, syncElements]);
+    stopElements(); setIsPlaying(false); setIsPreparing(true);
+    void (async () => {
+      try { await window.francisDesktop?.preparePreviews([...new Set(assets.map(asset => asset.path))]); } catch { /* Protocol fallback remains available. */ }
+      if (generation !== playbackGenerationRef.current) return;
+      await syncElements(positionRef.current, generation);
+      if (generation !== playbackGenerationRef.current) return;
+      basePositionRef.current = positionRef.current; startedAtRef.current = performance.now();
+      setIsPreparing(false); setIsPlaying(true);
+    })();
+  }, [arrangement, assets, stopElements, syncElements]);
   const seek = useCallback((nextPositionMs: number) => {
     if (!arrangement) return;
     playbackGenerationRef.current += 1;
@@ -177,14 +219,17 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
   useEffect(() => {
     if (!isPlaying || !arrangement) return;
     const timer = window.setInterval(() => {
-      const next = basePositionRef.current + performance.now() - startedAtRef.current;
+      const now = performance.now();
+      const mediaPosition = mediaClockPosition();
+      const next = mediaPosition ?? basePositionRef.current + now - startedAtRef.current;
       if (next >= arrangement.durationMs) { stop(); return; }
+      if (mediaPosition !== null) { basePositionRef.current = mediaPosition; startedAtRef.current = now; }
       positionRef.current = next; setPositionMs(next); void syncElements(next, playbackGenerationRef.current);
     }, 40);
     return () => window.clearInterval(timer);
-  }, [arrangement, isPlaying, stop, syncElements]);
+  }, [arrangement, isPlaying, mediaClockPosition, stop, syncElements]);
   useEffect(() => { stop(); }, [arrangement]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { stopElements(); void graphRef.current?.context.close(); }, [stopElements]);
 
-  return { isPlaying, positionMs, musicGainDb, meter, play, pause, stop, seek };
+  return { isPlaying, isPreparing, positionMs, musicGainDb, meter, play, pause, stop, seek };
 };

@@ -7,7 +7,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import { readProjectArchive, safeProjectName, writeProjectArchive } from './projectArchive.js';
 import { buildExportPlan, codecArguments, collectProcessResult, parseProgress } from './exportAudio.js';
 import { generateWaveforms, scanImportPaths } from './importAudio.js';
-import { registerMediaProtocol } from './mediaProtocol.js';
+import { preparePreviewProxy, registerMediaProtocol } from './mediaProtocol.js';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'francis-media', privileges: {
   standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true
@@ -134,6 +134,20 @@ ipcMain.handle('media:generate-waveforms', async (event, filePaths: string[]) =>
   const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
   return generateWaveforms(binary, filePaths,
     (completed, total) => event.sender.send('media:import-progress', { completed, total }));
+});
+ipcMain.handle('media:prepare-previews', async (_event, filePaths: string[]) => {
+  const binary = ffmpegStatic ? (app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic) : null;
+  const paths = [...new Set(filePaths)];
+  const results = new Array<string>(paths.length);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(4, Math.max(1, paths.length)) }, async () => {
+    while (cursor < paths.length) {
+      const index = cursor++;
+      results[index] = await preparePreviewProxy(paths[index], binary);
+    }
+  });
+  await Promise.all(workers);
+  return results;
 });
 ipcMain.handle('audio:export', async (event, payload: any, options: any) => {
   const extensions: Record<string, string> = { wav: 'wav', mp3: 'mp3', aac: 'm4a', flac: 'flac', ogg: 'ogg', opus: 'opus' };

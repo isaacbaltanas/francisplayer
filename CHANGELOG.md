@@ -2,6 +2,21 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.15.2] - 2026-10-31
+
+### Corregido
+
+- La línea de tiempo espera a que el audio esté realmente preparado antes de empezar a avanzar.
+- Pausa y Stop cancelan también la preparación pendiente y nunca dejan un inicio tardío.
+- El protocolo multimedia implementa rangos de bytes reales y permite reanudar o buscar dentro del archivo.
+- Al reanudar se espera al evento `seeked` antes de reproducir, evitando saltos al principio de la canción.
+- El cursor y el contador utilizan el tiempo real del clip audible como reloj maestro, eliminando el desfase acumulativo.
+
+### Cambiado
+
+- Los formatos no nativos se preparan en segundo plano después de importar o abrir un proyecto.
+- La caché temporal utiliza M4A/AAC con índice de búsqueda preciso; los originales permanecen intactos.
+
 ## [0.15.1] - 2026-10-31
 
 ### Corregido
