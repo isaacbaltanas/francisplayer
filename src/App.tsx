@@ -108,6 +108,19 @@ function BrandMark() {
   return <img className="brand-mark" src={appIconUrl} alt="" aria-hidden="true" />;
 }
 
+function ProjectActionIcon({ type }: { type: 'new' | 'open' | 'save' | 'saveAs' }) {
+  if (type === 'new') return <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M6 3.5h8l4 4V20.5H6z" /><path d="M14 3.5v4h4M9 14h6M12 11v6" />
+  </svg>;
+  if (type === 'open') return <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M3.5 7.5h6l2-2h4l2 2h3v11h-17z" /><path d="M3.5 10h17l-2 8.5h-17z" />
+  </svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M4 3.5h13l3 3v14H4z" /><path d="M8 3.5v6h8v-6M8 20.5v-7h8v7" />
+    {type === 'saveAs' && <path className="icon-accent" d="M17.5 12v6M14.5 15h6" />}
+  </svg>;
+}
+
 interface AssetListProps {
   kind: MediaKind;
   assets: MediaAsset[];
@@ -735,7 +748,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
       </div>
     </div>
 
-    {!arrangement ? <div className="timeline-empty"><div className="timeline-empty-icon">⌁⌁⌁</div><p>{t('timelineEmpty')}</p></div> : <>
+    {!arrangement ? <div className="timeline-empty"><p>{t('timelineEmpty')}</p></div> : <>
       {arrangement.warnings.length > 0 && <div className="warnings">{arrangement.warnings.map(warning =>
         <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
       {voiceOverlaps.size > 0 && <div className="warnings overlap-warning"><p>! {t('warningVoiceOverlap', { count: voiceOverlaps.size })}</p></div>}
@@ -1174,7 +1187,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.21.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.21.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1403,10 +1416,10 @@ export default function App() {
       <div className="brand"><BrandMark /><div><h1>Francis Player</h1><p>{t('appSubtitle')}</p></div></div>
       <div className="project-state"><span className="draft-pill">{t(isSaving ? 'statusSaving' : isDirty ? 'statusDirty' : projectPath ? 'statusSaved' : 'statusDraft')}</span><div><strong>{projectName}</strong><small>{status}</small></div></div>
       <nav className="project-actions">
-        <button onClick={() => void newProject()} disabled={isSaving} title={t('newProjectAction')}>＋</button>
-        <button onClick={() => void openProject()} disabled={isSaving} title={`${t('openProject')} · Ctrl/⌘O`}>⌂</button>
-        <button onClick={() => void saveProject(false)} disabled={isSaving} title={`${t('saveProject')} · Ctrl/⌘S`}>▣</button>
-        <button onClick={() => void saveProject(true)} disabled={isSaving} title={t('saveProjectAs')}>▣＋</button>
+        <button onClick={() => void newProject()} disabled={isSaving} title={t('newProjectAction')}><ProjectActionIcon type="new" /></button>
+        <button onClick={() => void openProject()} disabled={isSaving} title={`${t('openProject')} · Ctrl/⌘O`}><ProjectActionIcon type="open" /></button>
+        <button onClick={() => void saveProject(false)} disabled={isSaving} title={`${t('saveProject')} · Ctrl/⌘S`}><ProjectActionIcon type="save" /></button>
+        <button onClick={() => void saveProject(true)} disabled={isSaving} title={t('saveProjectAs')}><ProjectActionIcon type="saveAs" /></button>
         <button className={quarantine.length ? 'attention' : ''} onClick={() => setQuarantineOpen(true)} title={t('quarantine')}>Q {quarantine.length}</button>
         <button onClick={() => setImportLogOpen(true)} title={t('importLog')}>☷ {importLogs.length}</button>
         <button className="export-nav" onClick={() => setExportOpen(true)} disabled={!arrangement} title={t('exportMix')}>{t('export')}</button>

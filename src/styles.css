@@ -35,6 +35,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .draft-pill { border: 1px solid #6e522f; color: #e7aa62; font-size: 9px; letter-spacing: .13em; padding: 5px 7px; border-radius: 4px; }
 .project-actions { display: flex; gap: 3px; padding: 3px; border: 1px solid #2d3337; border-radius: 6px; background: #181c1f; -webkit-app-region: no-drag; }
 .project-actions button { min-width: 28px; height: 27px; border: 0; border-radius: 4px; background: transparent; color: #8b949a; font-size: 10px; cursor: pointer; }
+.project-actions button svg { width: 15px; height: 15px; display: block; margin: auto; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; stroke-linejoin: round; }
+.project-actions button .icon-accent { stroke: #edac5f; stroke-width: 2; }
 .project-actions button:hover { background: #343a3e; color: #ffc171; }
 .project-actions button:disabled { opacity: .28; cursor: not-allowed; }
 .project-actions .export-nav { width: auto; padding: 0 9px; color: #edac5f; font-size: 8px; font-weight: 800; letter-spacing: .08em; }
@@ -188,7 +190,7 @@ main { padding: 14px 22px 18px; max-width: 1900px; height: calc(100vh - 76px); m
 .zoom-control .fit-zoom-button { width: auto; min-width: 38px; padding: 0 7px; color: #e5a85e; font-size: 7px; font-weight: 800; letter-spacing: .05em; }
 .zoom-control output { min-width: 42px; text-align: center; font: 9px ui-monospace, monospace; }
 .timeline-empty { flex: 1; display: grid; place-content: center; justify-items: center; color: #666e74; }
-.timeline-empty p { font-size: 11px; }.timeline-empty-icon { font-size: 34px; color: #343b40; letter-spacing: 5px; }
+.timeline-empty p { font-size: 11px; }
 .timeline-summary { flex: 0 1 auto; min-width: 0; padding: 0; overflow: hidden; color: #737b81; font-size: 8px; white-space: nowrap; text-overflow: ellipsis; }
 .warnings { padding: 6px 18px; background: #3b2920; color: #eab67d; font-size: 9px; border-bottom: 1px solid #5b3b29; }
 .warnings p { margin: 3px 0; }
