@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { dbToLinear, normalizationAdjustmentDb } from '../lib/audio';
 import { calculateGroupedDuckingDb } from '../lib/automation';
 import { clipFadeGain, trackAutomationGain } from '../lib/clipGain';
-import { clipsInLookahead, technicalFadeWindow } from '../lib/playbackScheduling';
+import { clipsInLookahead, voicePlaybackWindow } from '../lib/playbackScheduling';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, smoothAudioGain, startAudioGain, type RealtimeAudioGraph } from '../lib/realtimeAudioGraph';
 import type { Arrangement, AudioSettings, AutomationState, LibraryTab, LoudnessMeterReading, MediaAsset, TimelineClip } from '../types';
 
@@ -94,11 +94,11 @@ const createPlayingBuffer = (
   gainValue: number
 ): PlayingBuffer | null => {
   const offsetMs = (clip.sourceOffsetMs ?? 0) + Math.max(0, positionMs - clip.startMs);
-  const remainingMs = Math.min(
+  const logicalRemainingMs = Math.min(
     clip.startMs + clip.durationMs - Math.max(positionMs, clip.startMs),
     buffer.duration * 1000 - offsetMs
   );
-  if (remainingMs <= 0) return null;
+  if (logicalRemainingMs <= 0) return null;
   const source = graph.context.createBufferSource();
   source.buffer = buffer;
   const gain = graph.context.createGain();
@@ -106,13 +106,14 @@ const createPlayingBuffer = (
   const targetGain = safeGain(gainValue);
   source.connect(gain).connect(declick).connect(graph.input);
   const when = graph.context.currentTime + Math.max(0, clip.startMs - positionMs) / 1000;
-  const technicalFade = technicalFadeWindow(when, remainingMs / 1000);
+  const availablePostRollMs = Math.max(0, buffer.duration * 1000 - offsetMs - logicalRemainingMs);
+  const playback = voicePlaybackWindow(when, logicalRemainingMs / 1000, availablePostRollMs / 1000);
   gain.gain.setValueAtTime(targetGain, when);
-  declick.gain.setValueAtTime(0, technicalFade.startTime);
-  declick.gain.linearRampToValueAtTime(1, technicalFade.fadeInEndTime);
-  declick.gain.setValueAtTime(1, technicalFade.fadeOutStartTime);
-  declick.gain.linearRampToValueAtTime(0, technicalFade.endTime);
-  source.start(when, Math.max(0, offsetMs) / 1000, remainingMs / 1000);
+  declick.gain.setValueAtTime(0, playback.startTime);
+  declick.gain.linearRampToValueAtTime(1, playback.fadeInEndTime);
+  declick.gain.setValueAtTime(1, playback.fadeOutStartTime);
+  declick.gain.linearRampToValueAtTime(0, playback.endTime);
+  source.start(when, Math.max(0, offsetMs) / 1000, playback.sourceDurationSeconds);
   let cancelled = false;
   let released = false;
   const release = () => {

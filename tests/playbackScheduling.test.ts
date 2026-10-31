@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clipsInLookahead, technicalFadeWindow } from '../src/lib/playbackScheduling';
+import { clipsInLookahead, technicalFadeWindow, voicePlaybackWindow } from '../src/lib/playbackScheduling';
 import type { TimelineClip } from '../src/types';
 
 const clip = (id: string, startMs: number, durationMs = 1_000, assetId: string | null = id): TimelineClip => ({
@@ -24,6 +24,17 @@ describe('voice playback scheduling', () => {
     });
     expect(technicalFadeWindow(2, .01)).toEqual({
       startTime: 2, fadeInEndTime: 2.005, fadeOutStartTime: 2.005, endTime: 2.01, fadeSeconds: .005
+    });
+  });
+
+  it('uses discarded source audio as a smooth post-roll without extending the logical clip', () => {
+    expect(voicePlaybackWindow(10, 2, .493)).toEqual({
+      startTime: 10, fadeInEndTime: 10.008, fadeOutStartTime: 12, endTime: 12.05,
+      postRollSeconds: .05, sourceDurationSeconds: 2.05
+    });
+    expect(voicePlaybackWindow(10, 2, 0)).toEqual({
+      startTime: 10, fadeInEndTime: 10.008, fadeOutStartTime: 11.992, endTime: 12,
+      postRollSeconds: 0, sourceDurationSeconds: 2
     });
   });
 });

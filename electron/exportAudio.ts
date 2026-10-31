@@ -126,12 +126,17 @@ export const buildExportPlan = (payload: any) => {
     const sourceBase = clip.kind === 'music' ? musicExpression(clip, payload) : number(dbToGain(payload.audioSettings.voiceGainDb)).toString();
     const base = `(${sourceBase})*${number(normalization)}`;
     const sourceStart = (clip.sourceOffsetMs ?? 0) / 1000;
-    const chain = [`${sourceLabel}atrim=start=${number(sourceStart)}:end=${number(sourceStart + clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
+    const sourceDuration = (asset.sourceDurationMs ?? clip.originalSourceDurationMs ?? asset.durationMs ?? clip.durationMs) / 1000;
+    const logicalEnd = sourceStart + clip.durationMs / 1000;
+    const voicePostRoll = clip.kind === 'voice' ? Math.min(.05, Math.max(0, sourceDuration - logicalEnd)) : 0;
+    const renderedDuration = clip.durationMs / 1000 + voicePostRoll;
+    const chain = [`${sourceLabel}atrim=start=${number(sourceStart)}:end=${number(logicalEnd + voicePostRoll)}`, 'asetpts=PTS-STARTPTS'];
     if (clip.kind === 'music') chain.push('asetnsamples=n=128:p=1');
     if (clip.kind === 'voice') {
-      const technicalFade = Math.min(.008, clip.durationMs / 2000);
+      const technicalFade = Math.min(.008, renderedDuration / 2);
+      const fadeOutStart = voicePostRoll > 0 ? clip.durationMs / 1000 : Math.max(0, renderedDuration - technicalFade);
       chain.push(`afade=t=in:st=0:d=${number(technicalFade)}`,
-        `afade=t=out:st=${number(Math.max(0, clip.durationMs / 1000 - technicalFade))}:d=${number(technicalFade)}`);
+        `afade=t=out:st=${number(fadeOutStart)}:d=${number(voicePostRoll || technicalFade)}`);
     }
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${number(Math.min(clip.fadeInMs, clip.durationMs) / 1000)}`);
     if (clip.fadeOutMs) chain.push(`afade=t=out:st=${number(Math.max(0, clip.durationMs - clip.fadeOutMs) / 1000)}:d=${number(Math.min(clip.fadeOutMs, clip.durationMs) / 1000)}`);

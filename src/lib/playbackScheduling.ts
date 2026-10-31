@@ -17,3 +17,27 @@ export const technicalFadeWindow = (startTime: number, durationSeconds: number, 
     fadeSeconds
   };
 };
+
+export const voicePlaybackWindow = (
+  startTime: number,
+  logicalDurationSeconds: number,
+  availablePostRollSeconds: number,
+  maximumPostRollSeconds = .05
+) => {
+  const logicalDuration = Math.max(0, logicalDurationSeconds);
+  const postRollSeconds = Math.min(maximumPostRollSeconds, Math.max(0, availablePostRollSeconds));
+  const sourceDurationSeconds = logicalDuration + postRollSeconds;
+  const startFade = Math.min(.008, sourceDurationSeconds / 2);
+  const endTime = startTime + sourceDurationSeconds;
+  const fadeOutStartTime = postRollSeconds > 0
+    ? startTime + logicalDuration
+    : Math.max(startTime + startFade, endTime - Math.min(.008, sourceDurationSeconds / 2));
+  return {
+    startTime,
+    fadeInEndTime: startTime + startFade,
+    fadeOutStartTime,
+    endTime,
+    postRollSeconds,
+    sourceDurationSeconds
+  };
+};
