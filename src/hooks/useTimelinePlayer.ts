@@ -188,13 +188,27 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     await Promise.all(pending);
   }, [arrangement, assets, audioSettings, automation, ensureGraph, tabs]);
 
-  const pause = useCallback(() => {
+  const holdPosition = useCallback(() => {
+    const currentPosition = mediaClockPosition() ?? positionRef.current;
+    positionRef.current = currentPosition;
+    basePositionRef.current = currentPosition;
+    startedAtRef.current = performance.now();
+    setPositionMs(currentPosition);
     playbackGenerationRef.current += 1;
     setIsPreparing(false); setIsPlaying(false); stopElements();
-  }, [stopElements]);
+  }, [mediaClockPosition, stopElements]);
+  const pause = holdPosition;
   const stop = useCallback(() => {
+    holdPosition();
+    setMusicGainDb(audioSettings.musicGainDb);
+    if (graphRef.current?.meter instanceof AudioWorkletNode) graphRef.current.meter.port.postMessage('reset');
+    setMeter({ momentary: -120, shortTerm: -120, integrated: -120, peakDbfs: -120 });
+  }, [audioSettings.musicGainDb, holdPosition]);
+  const reset = useCallback(() => {
     playbackGenerationRef.current += 1;
-    setIsPreparing(false); setIsPlaying(false); stopElements(); positionRef.current = 0; basePositionRef.current = 0; setPositionMs(0); setMusicGainDb(audioSettings.musicGainDb);
+    setIsPreparing(false); setIsPlaying(false); stopElements();
+    positionRef.current = 0; basePositionRef.current = 0; startedAtRef.current = performance.now(); setPositionMs(0);
+    setMusicGainDb(audioSettings.musicGainDb);
     if (graphRef.current?.meter instanceof AudioWorkletNode) graphRef.current.meter.port.postMessage('reset');
     setMeter({ momentary: -120, shortTerm: -120, integrated: -120, peakDbfs: -120 });
   }, [audioSettings.musicGainDb, stopElements]);
@@ -228,14 +242,17 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
       const now = performance.now();
       const mediaPosition = mediaClockPosition();
       const next = mediaPosition ?? basePositionRef.current + now - startedAtRef.current;
-      if (next >= arrangement.durationMs) { stop(); return; }
+      if (next >= arrangement.durationMs) {
+        positionRef.current = arrangement.durationMs; basePositionRef.current = arrangement.durationMs;
+        setPositionMs(arrangement.durationMs); stop(); return;
+      }
       if (mediaPosition !== null) { basePositionRef.current = mediaPosition; startedAtRef.current = now; }
       positionRef.current = next; setPositionMs(next); void syncElements(next, playbackGenerationRef.current);
     }, 40);
     return () => window.clearInterval(timer);
   }, [arrangement, isPlaying, mediaClockPosition, stop, syncElements]);
-  useEffect(() => { stop(); }, [arrangement]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { reset(); }, [arrangement]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { stopElements(); void graphRef.current?.context.close(); }, [stopElements]);
 
-  return { isPlaying, isPreparing, positionMs, musicGainDb, meter, play, pause, stop, seek };
+  return { isPlaying, isPreparing, positionMs, musicGainDb, meter, play, pause, stop, reset, seek };
 };

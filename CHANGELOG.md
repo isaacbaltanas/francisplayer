@@ -2,6 +2,17 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.15.4] - 2026-10-31
+
+### Corregido
+
+- El botón Stop conserva la posición exacta del cabezal y Play reanuda desde ese punto.
+- Los reinicios de proyecto y de montaje siguen llevando el cabezal al inicio mediante una acción interna separada.
+
+### Cambiado
+
+- El deslizador horizontal del transporte queda oculto, pero se conserva en el código para poder recuperarlo más adelante.
+
 ## [0.15.3] - 2026-10-31
 
 ### Corregido

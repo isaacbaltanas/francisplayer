@@ -639,10 +639,10 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
         <button className="transport-primary" onClick={isPlaying ? onPause : onPlay}
           aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
         <button className="transport-stop" onClick={onStop} aria-label={t('stopProgram')}>■</button>
-        <time>{formatDuration(positionMs, true)}</time>
-        <input type="range" min="0" max={arrangement.durationMs} step="100" value={positionMs}
+        <time className="transport-position">{formatDuration(positionMs, true)}</time>
+        <input className="transport-seek-slider" type="range" min="0" max={arrangement.durationMs} step="100" value={positionMs}
           onChange={(event) => onSeek(Number(event.target.value))} />
-        <time>{formatDuration(arrangement.durationMs)}</time>
+        <time className="transport-duration">{formatDuration(arrangement.durationMs)}</time>
         <div className="gain-meter"><span>{t('musicGain')}</span><strong>{musicGainDb.toFixed(1)} dB</strong>
           <i style={{ width: `${Math.max(0, Math.min(100, (musicGainDb + 80) / 80 * 100))}%` }} /></div>
         <div className="loudness-meter" title={t('loudnessMeterHelp')}>
@@ -884,7 +884,7 @@ export default function App() {
 
   const buildArrangement = (nextSettings: ArrangementSettings) => {
     stopPreview();
-    player.stop();
+    player.reset();
     const next = createArrangement(musicSequence, voiceSequence, nextSettings);
     setArrangement(next);
     setAutomation({ ...createAutomationState(next, audioSettings),
@@ -905,7 +905,7 @@ export default function App() {
   };
 
   const changeArrangementSettings = (patch: Partial<ArrangementSettings>) => {
-    player.stop();
+    player.reset();
     const nextSettings = { ...settings, ...patch };
     const nextMusicSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
       activeMusicTabId, musicInsertion, nextSettings.seed);
@@ -948,7 +948,7 @@ export default function App() {
   };
 
   const removeClip = (clip: TimelineClip) => {
-    player.stop();
+    player.reset();
     setArrangement(current => {
       if (!current) return current;
       if (clip.kind === 'music') return {
@@ -1041,7 +1041,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.15.3', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.15.4', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1068,7 +1068,7 @@ export default function App() {
       const project = opened.project as ProjectDocument;
       const projectAssets = project.assets.map(asset => ({ ...asset, waveform: asset.waveform ?? [] }));
       const hydrationGeneration = ++waveformHydrationGeneration.current;
-      player.stop(); stopPreview();
+      player.reset(); stopPreview();
       assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
       setMusic(projectAssets.filter(asset => asset.kind === 'music'));
       setVoices(projectAssets.filter(asset => asset.kind === 'voice'));
@@ -1101,7 +1101,7 @@ export default function App() {
 
   const newProject = () => {
     waveformHydrationGeneration.current += 1;
-    player.stop(); stopPreview();
+    player.reset(); stopPreview();
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
