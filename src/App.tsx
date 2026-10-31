@@ -567,12 +567,11 @@ interface TimelineProps {
   onDropAsset: (assetId: string, kind: MediaKind, startMs: number) => void;
   onPlay: () => void;
   onPause: () => void;
-  onStop: () => void;
   onSeek: (positionMs: number) => void;
 }
 
 function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences,
-  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onStop, onSeek }: TimelineProps) {
+  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClip, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
@@ -586,6 +585,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
   const timelineTabs = [...tabs.filter(tab => tab.kind === 'voice'), ...tabs.filter(tab => tab.kind === 'music')];
   const waveforms = new Map(assets.map(asset => [asset.id, asset.waveform ?? []]));
   const voiceOverlaps = arrangement ? overlappingClipIds(arrangement.voice) : new Set<string>();
+  const durationMs = arrangement?.durationMs ?? 0;
 
   useEffect(() => {
     const scroll = timelineScrollRef.current;
@@ -618,48 +618,31 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
   }, [zoom]);
 
   return <section className="timeline-section">
-    <header className="timeline-header">
-      <div><h2>{t('timeline')}</h2></div>
-      <div className="timeline-tools"><button className={`magnet-button ${editingPreferences.snapEnabled ? 'active' : ''}`}
-        onClick={() => onEditingPreferencesChange({ snapEnabled: !editingPreferences.snapEnabled })}
-        title={t('toggleSnap')}>🧲</button>
-      <select value={editingPreferences.snapMode} onChange={(event) => onEditingPreferencesChange({ snapMode: event.target.value as EditingPreferences['snapMode'] })}
-        aria-label={t('snapMode')}>
-        <option value="smart">{t('snapSmart')}</option><option value="grid">{t('snapGrid')}</option>
-        <option value="edges">{t('snapEdges')}</option><option value="original">{t('snapOriginal')}</option>
-      </select>
-      <div className="zoom-control" title={t('trackpadZoomHint')}><span>{t('zoom')}</span>
-        <button className="fit-zoom-button" onClick={() => setZoom(fitZoom)} title={t('fitTimeline')}>{t('fit')}</button>
-        <button onClick={() => setZoom(Math.max(fitZoom, zoom / 1.25))}>−</button>
-        <output>{zoom < .1 ? (zoom * 100).toFixed(1) : Math.round(zoom * 100)}%</output>
-        <button onClick={() => setZoom(Math.min(4, zoom * 1.25))}>＋</button></div>
-      </div>
-    </header>
-
-    {!arrangement ? <div className="timeline-empty"><div className="timeline-empty-icon">⌁⌁⌁</div><p>{t('timelineEmpty')}</p></div> : <>
-      <div className="timeline-summary">{t('summary', { music: arrangement.music.filter(c => c.kind !== 'missing').length,
-        voice: arrangement.voice.length, duration: formatDuration(arrangement.durationMs) })}</div>
-      {arrangement.warnings.length > 0 && <div className="warnings">{arrangement.warnings.map(warning =>
-        <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
-      {voiceOverlaps.size > 0 && <div className="warnings overlap-warning"><p>! {t('warningVoiceOverlap', { count: voiceOverlaps.size })}</p></div>}
-      <div className="transport">
+    <div className="timeline-toolbar">
+      <div className="timeline-toolbar-left">
+        <div className="timeline-summary">{t('summary', {
+          music: arrangement?.music.filter(c => c.kind !== 'missing').length ?? 0,
+          voice: arrangement?.voice.length ?? 0,
+          duration: formatDuration(durationMs)
+        })}</div>
         <div className="transport-time"><time className="transport-position">{formatDuration(positionMs, true)}</time>
-          <span>/</span><time className="transport-duration">{formatDuration(arrangement.durationMs)}</time></div>
-        <div className="transport-controls">
-          <button className="transport-skip" disabled={positionMs <= 0}
-            onClick={() => onSeek(positionMs - editingPreferences.transportSkipSeconds * 1000)}
-            aria-label={t('skipBackward', { seconds: editingPreferences.transportSkipSeconds })}
-            title={t('skipBackward', { seconds: editingPreferences.transportSkipSeconds })}>−{editingPreferences.transportSkipSeconds}s</button>
-          <button className="transport-primary" onClick={isPlaying ? onPause : onPlay}
-            aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
-          <button className="transport-stop" onClick={onStop} aria-label={t('stopProgram')}>■</button>
-          <button className="transport-skip" disabled={positionMs >= arrangement.durationMs}
-            onClick={() => onSeek(positionMs + editingPreferences.transportSkipSeconds * 1000)}
-            aria-label={t('skipForward', { seconds: editingPreferences.transportSkipSeconds })}
-            title={t('skipForward', { seconds: editingPreferences.transportSkipSeconds })}>+{editingPreferences.transportSkipSeconds}s</button>
-        </div>
-        <input className="transport-seek-slider" type="range" min="0" max={arrangement.durationMs} step="100" value={positionMs}
-          onChange={(event) => onSeek(Number(event.target.value))} />
+          <span>/</span><time className="transport-duration">{formatDuration(durationMs)}</time></div>
+      </div>
+      <div className="transport-controls">
+        <button className="transport-skip" disabled={!arrangement || positionMs <= 0}
+          onClick={() => onSeek(positionMs - editingPreferences.transportSkipSeconds * 1000)}
+          aria-label={t('skipBackward', { seconds: editingPreferences.transportSkipSeconds })}
+          title={`${t('skipBackward', { seconds: editingPreferences.transportSkipSeconds })} · ←`}>←</button>
+        <button className="transport-primary" disabled={!arrangement} onClick={isPlaying ? onPause : onPlay}
+          aria-label={t(isPlaying ? 'pauseProgram' : 'playProgram')}>{isPlaying ? 'Ⅱ' : '▶'}</button>
+        <button className="transport-skip" disabled={!arrangement || positionMs >= durationMs}
+          onClick={() => onSeek(positionMs + editingPreferences.transportSkipSeconds * 1000)}
+          aria-label={t('skipForward', { seconds: editingPreferences.transportSkipSeconds })}
+          title={`${t('skipForward', { seconds: editingPreferences.transportSkipSeconds })} · →`}>→</button>
+      </div>
+      <input className="transport-seek-slider" type="range" min="0" max={durationMs} step="100" value={positionMs}
+        onChange={(event) => onSeek(Number(event.target.value))} />
+      <div className="timeline-toolbar-right">
         <div className="transport-meters">
           <div className="gain-meter"><span>{t('musicGain')}</span><strong>{musicGainDb.toFixed(1)} dB</strong>
             <i style={{ width: `${Math.max(0, Math.min(100, (musicGainDb + 80) / 80 * 100))}%` }} /></div>
@@ -669,7 +652,27 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
             <i style={{ width: `${Math.max(0, Math.min(100, (meter.momentary + 60) / 51 * 100))}%` }} />
           </div>
         </div>
+        <div className="timeline-tools"><button className={`magnet-button ${editingPreferences.snapEnabled ? 'active' : ''}`}
+        onClick={() => onEditingPreferencesChange({ snapEnabled: !editingPreferences.snapEnabled })}
+        title={t('toggleSnap')}>🧲</button>
+          <select value={editingPreferences.snapMode} onChange={(event) => onEditingPreferencesChange({ snapMode: event.target.value as EditingPreferences['snapMode'] })}
+            aria-label={t('snapMode')}>
+            <option value="smart">{t('snapSmart')}</option><option value="grid">{t('snapGrid')}</option>
+            <option value="edges">{t('snapEdges')}</option><option value="original">{t('snapOriginal')}</option>
+          </select>
+          <div className="zoom-control" title={t('trackpadZoomHint')}><span>{t('zoom')}</span>
+            <button className="fit-zoom-button" onClick={() => setZoom(fitZoom)} title={t('fitTimeline')}>{t('fit')}</button>
+            <button onClick={() => setZoom(Math.max(fitZoom, zoom / 1.25))}>−</button>
+            <output>{zoom < .1 ? (zoom * 100).toFixed(1) : Math.round(zoom * 100)}%</output>
+            <button onClick={() => setZoom(Math.min(4, zoom * 1.25))}>＋</button></div>
+        </div>
       </div>
+    </div>
+
+    {!arrangement ? <div className="timeline-empty"><div className="timeline-empty-icon">⌁⌁⌁</div><p>{t('timelineEmpty')}</p></div> : <>
+      {arrangement.warnings.length > 0 && <div className="warnings">{arrangement.warnings.map(warning =>
+        <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
+      {voiceOverlaps.size > 0 && <div className="warnings overlap-warning"><p>! {t('warningVoiceOverlap', { count: voiceOverlaps.size })}</p></div>}
       <div className="timeline-shell">
         <div className="track-labels">
           <div className="ruler-spacer" />
@@ -824,8 +827,6 @@ export default function App() {
       if (kind === 'music') setMusic(current => [...current, ...assets]);
       else setVoices(current => [...current, ...assets]);
       if (window.francisDesktop?.preparePreviews) void window.francisDesktop.preparePreviews(assets.map(asset => asset.path)).catch(() => undefined);
-      setArrangement(null);
-      setAutomation(null);
     } catch {
       setError(t('fileError'));
     } finally {
@@ -854,6 +855,26 @@ export default function App() {
     activePreviewRef.current = null;
     setActivePreview(null);
   };
+
+  useEffect(() => {
+    const handleTimelineKeys = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.code === 'Space') {
+        event.preventDefault();
+        if (event.repeat || !arrangement) return;
+        if (player.isPlaying || player.isPreparing) player.pause();
+        else { stopPreview(); player.play(); }
+        return;
+      }
+      if (!arrangement || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
+      event.preventDefault();
+      const direction = event.key === 'ArrowLeft' ? -1 : 1;
+      player.seek(player.positionMs + direction * editingPreferences.transportSkipSeconds * 1000);
+    };
+    window.addEventListener('keydown', handleTimelineKeys, { capture: true });
+    return () => window.removeEventListener('keydown', handleTimelineKeys, { capture: true });
+  }, [arrangement, editingPreferences.transportSkipSeconds, player.isPlaying, player.isPreparing,
+    player.pause, player.play, player.positionMs, player.seek]);
 
   const preview = async (asset: MediaAsset) => {
     player.pause();
@@ -1060,7 +1081,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.16.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.17.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1146,7 +1167,6 @@ export default function App() {
       importedCount: 1, quarantinedCount: 0, duplicateCount: 0,
       entries: [{ path: item.path, name: item.name, outcome: 'imported', detail: 'Manually admitted from quarantine' }]
     }, ...current]);
-    setArrangement(null); setAutomation(null);
   };
 
   useEffect(() => {
@@ -1232,7 +1252,7 @@ export default function App() {
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
         onMoveClip={moveClip} onRemoveClip={removeClip} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
         onPlay={() => { stopPreview(); player.play(); }}
-        onPause={player.pause} onStop={player.stop} onSeek={player.seek} />
+        onPause={player.pause} onSeek={player.seek} />
     </main>
     <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio} />
     <QuarantineDialog open={quarantineOpen} items={quarantine} onClose={() => setQuarantineOpen(false)} onAdmit={admitFromQuarantine} />

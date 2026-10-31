@@ -2,6 +2,25 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.17.0] - 2026-10-31
+
+### Añadido
+
+- La barra espaciadora controla siempre Play/Pausa y las flechas izquierda y derecha desplazan el cabezal usando el intervalo configurado.
+- El transporte permanece visible incluso cuando el montaje todavía está vacío.
+
+### Corregido
+
+- Importar música o locuciones ya no elimina ni reinicia el montaje existente.
+- Los puntos de automatización conservan una forma circular real a cualquier escala.
+- Las transiciones de automatización cercanas ya no se dibujan en sentido inverso.
+- El selector del imán queda centrado verticalmente y con una flecha alineada.
+
+### Cambiado
+
+- La cabecera, el resumen, el transporte, los medidores, el imán y el zoom se integran en una única fila compacta.
+- Se elimina el título «Línea de tiempo» y el botón Stop; el transporte queda reducido a retroceso, Play/Pausa y avance.
+
 ## [0.16.0] - 2026-10-31
 
 ### Añadido

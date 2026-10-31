@@ -5,6 +5,7 @@ import {
   calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
   updateAutomationGroup
 } from '../src/lib/automation';
+import { createAutomationSegments } from '../src/components/AutomationEditor';
 import type { ArrangementSettings, MediaAsset } from '../src/types';
 
 const asset = (id: string, kind: 'music' | 'voice', durationMs: number): MediaAsset => ({
@@ -59,6 +60,17 @@ describe('automation groups', () => {
     const changed = updateAutomationGroup(state, lowGroup, 20);
     const atVoice = arrangement.voice[0].startMs + 1000;
     expect(calculateGroupedDuckingDb(atVoice, arrangement.voice, changed, audioSettings)).toBeCloseTo(-13.98, 1);
+  });
+
+  it('never draws a ducking transition backwards when voice clips are close together', () => {
+    const closeArrangement = createArrangement(
+      [asset('song', 'music', 100_000)],
+      [asset('v1', 'voice', 8_000), asset('v2', 'voice', 8_000)],
+      { ...settings, voiceIntervalMs: 8_000, allowVoiceOverlap: true }
+    );
+    const state = createAutomationState(closeArrangement, { ...audioSettings, fadeDownMs: 4_000, fadeUpMs: 6_000 });
+    const segments = createAutomationSegments(closeArrangement, state);
+    expect(segments.every(segment => segment.startMs <= segment.endMs)).toBe(true);
   });
 });
 

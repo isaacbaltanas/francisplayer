@@ -40,7 +40,7 @@ const getAssignmentGroup = (state: AutomationState, eventId: string, type: Autom
   return assignment?.[assignmentKey(type)] ?? '';
 };
 
-const createSegments = (arrangement: Arrangement, state: AutomationState): Segment[] => {
+export const createAutomationSegments = (arrangement: Arrangement, state: AutomationState): Segment[] => {
   const voices = [...arrangement.voice].sort((a, b) => a.startMs - b.startMs);
   const result: Segment[] = [];
   let cursor = 0;
@@ -54,7 +54,7 @@ const createSegments = (arrangement: Arrangement, state: AutomationState): Segme
     const low = getGroup(state, lowId)?.value ?? 10;
     const down = getGroup(state, downId)?.value ?? 1000;
     const up = getGroup(state, upId)?.value ?? 1000;
-    const downStart = Math.max(cursor, voice.startMs - down);
+    const downStart = Math.min(voice.startMs, Math.max(cursor, voice.startMs - down));
     const voiceEnd = Math.min(arrangement.durationMs, voice.startMs + voice.durationMs);
     const upEnd = Math.min(arrangement.durationMs, voiceEnd + up);
 
@@ -101,7 +101,7 @@ export function AutomationEditor({ arrangement, state, onChange }: {
   const [drag, setDrag] = useState<DragState | null>(null);
   const [highlightedGroup, setHighlightedGroup] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; segment: Segment } | null>(null);
-  const segments = useMemo(() => createSegments(arrangement, state), [arrangement, state]);
+  const segments = useMemo(() => createAutomationSegments(arrangement, state), [arrangement, state]);
 
   const displayValue = (segment: Segment) => {
     const value = getGroup(state, segment.groupId)?.value ?? 0;
@@ -115,7 +115,7 @@ export function AutomationEditor({ arrangement, state, onChange }: {
     return item ? `${t(groupLabelKey(item.type))} ${item.index}` : '';
   };
 
-  const startDrag = (event: React.PointerEvent<SVGLineElement>, segment: Segment) => {
+  const startDrag = (event: React.PointerEvent<Element>, segment: Segment) => {
     event.preventDefault();
     event.stopPropagation();
     let currentState = state;
@@ -133,7 +133,7 @@ export function AutomationEditor({ arrangement, state, onChange }: {
     setMenu(null);
   };
 
-  const moveDrag = (event: React.PointerEvent<SVGSVGElement>) => {
+  const moveDrag = (event: React.PointerEvent<Element>) => {
     if (!drag || !svgRef.current) return;
     event.preventDefault();
     const rect = svgRef.current.getBoundingClientRect();
@@ -161,13 +161,13 @@ export function AutomationEditor({ arrangement, state, onChange }: {
     window.setTimeout(() => setHighlightedGroup(null), 450);
   };
 
-  return <div className="automation-editor" onClick={(event) => event.stopPropagation()}>
+  return <div className="automation-editor" onClick={(event) => event.stopPropagation()}
+    onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}>
     <div className="automation-caption">
       <span>{t('globalMusicAutomation')}</span>
       <small>{t('automationHint')}</small>
     </div>
-    <svg ref={svgRef} viewBox="0 0 1000 100" preserveAspectRatio="none"
-      onPointerMove={moveDrag} onPointerUp={finishDrag} onPointerCancel={finishDrag}>
+    <svg ref={svgRef} viewBox="0 0 1000 100" preserveAspectRatio="none">
       <g className="automation-grid">
         {[10, 30, 50, 70, 90].map(y => <line key={y} x1="0" x2="1000" y1={y} y2={y} />)}
       </g>
@@ -184,8 +184,6 @@ export function AutomationEditor({ arrangement, state, onChange }: {
             onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); setMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY, segment }); }} />
           <line className="automation-line" style={{ stroke: color }} x1={x1} x2={x2}
             y1={yFor(segment.startPercent)} y2={yFor(segment.endPercent)} />
-          <circle className="automation-point" style={{ fill: color }} cx={x1} cy={yFor(segment.startPercent)} r="3.2"
-            onPointerDown={(event) => startDrag(event as unknown as React.PointerEvent<SVGLineElement>, segment)} />
           {wideEnough && <g className="automation-label">
             <rect x={(x1 + x2) / 2 - 43} y={Math.max(2, Math.min(yFor(segment.startPercent), yFor(segment.endPercent)) - 18)} width="86" height="14" rx="3" />
             <text x={(x1 + x2) / 2} y={Math.max(12, Math.min(yFor(segment.startPercent), yFor(segment.endPercent)) - 8)}>{groupName(segment.groupId)} · {displayValue(segment)}</text>
@@ -193,6 +191,12 @@ export function AutomationEditor({ arrangement, state, onChange }: {
         </g>;
       })}
     </svg>
+    {segments.map(segment => <button key={`point-${segment.id}`}
+      className={`automation-point ${highlightedGroup === segment.groupId ? 'highlighted' : ''}`}
+      style={{ left: `${segment.startMs / arrangement.durationMs * 100}%`, top: `${yFor(segment.startPercent)}%`,
+        background: getGroup(state, segment.groupId)?.color ?? '#71f6ca' }}
+      aria-label={`${groupName(segment.groupId)} · ${displayValue(segment)}`}
+      onPointerDown={(event) => startDrag(event, segment)} />)}
     {menu && <div className="automation-menu" style={{ left: menu.x, top: menu.y }}>
       <strong>{groupName(menu.segment.groupId)}</strong>
       <button onClick={() => detach(menu.segment)}>＋ {t('detachNewGroup')}</button>
