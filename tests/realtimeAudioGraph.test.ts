@@ -12,14 +12,11 @@ describe('realtime audio effects graph', () => {
     const calls: Array<[string, number, number]> = [];
     const parameter = {
       value: .7,
-      cancelAndHoldAtTime: (time: number) => calls.push(['hold', time, time]),
       cancelScheduledValues: (time: number) => calls.push(['cancel', time, time]),
-      setValueAtTime: (value: number, time: number) => calls.push(['set', value, time]),
-      exponentialRampToValueAtTime: (value: number, time: number) => calls.push(['exponential', value, time]),
-      linearRampToValueAtTime: (value: number, time: number) => calls.push(['linear', value, time])
+      setTargetAtTime: (value: number, time: number, constant: number) => calls.push(['target', value, time + constant])
     } as unknown as AudioParam;
-    smoothAudioGain(parameter, .2, { currentTime: 10 }, .04);
-    expect(calls).toEqual([['hold', 10, 10], ['exponential', .2, 10.04]]);
+    smoothAudioGain(parameter, .2, { currentTime: 10 }, .006);
+    expect(calls).toEqual([['cancel', 10, 10], ['target', .2, 10.006]]);
   });
 
   it('uses a short technical fade when a new audio source starts', () => {

@@ -15,19 +15,12 @@ export const smoothAudioGain = (
   parameter: AudioParam,
   target: number,
   context: Pick<BaseAudioContext, 'currentTime'>,
-  rampSeconds = .045
+  timeConstant = .006
 ) => {
   const now = context.currentTime;
   const safeTarget = Math.max(0, Math.min(8, target));
-  const current = Math.max(0, parameter.value);
-  if (typeof parameter.cancelAndHoldAtTime === 'function') parameter.cancelAndHoldAtTime(now);
-  else {
-    parameter.cancelScheduledValues(now);
-    parameter.setValueAtTime(current, now);
-  }
-  const end = now + Math.max(.001, rampSeconds);
-  if (safeTarget > .000001 && current > .000001) parameter.exponentialRampToValueAtTime(safeTarget, end);
-  else parameter.linearRampToValueAtTime(safeTarget, end);
+  parameter.cancelScheduledValues(now);
+  parameter.setTargetAtTime(safeTarget, now, Math.max(.001, timeConstant));
 };
 
 export const startAudioGain = (

@@ -10,6 +10,7 @@ interface PlayingElement {
   element: HTMLAudioElement;
   source: MediaElementAudioSourceNode;
   gain: GainNode;
+  targetGain: number;
   ready: Promise<void>;
   cancel: () => void;
 }
@@ -27,7 +28,8 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
   element.preload = 'auto';
   const source = graph.context.createMediaElementSource(element);
   const gain = graph.context.createGain();
-  startAudioGain(gain.gain, safeGain(gainValue), graph.context);
+  const targetGain = safeGain(gainValue);
+  gain.gain.value = 0;
   source.connect(gain).connect(clip.kind === 'voice' ? graph.input : graph.output);
   let cancelled = false;
   let readySettled = false;
@@ -50,6 +52,7 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
       if (cancelled) { settleReady(); return; }
       await element.play();
       if (cancelled) element.pause();
+      else startAudioGain(gain.gain, targetGain, graph.context);
     } catch { /* A missing or unreadable clip must not lock the transport. */ }
     settleReady();
   };
@@ -61,7 +64,7 @@ const createPlayingElement = (graph: RealtimeAudioGraph, asset: MediaAsset, clip
     source.disconnect(); gain.disconnect();
     settleReady();
   };
-  return { clipId: clip.id, element, source, gain, ready, cancel };
+  return { clipId: clip.id, element, source, gain, targetGain, ready, cancel };
 };
 
 export const useTimelinePlayer = (arrangement: Arrangement | null, assets: MediaAsset[], audioSettings: AudioSettings,
@@ -118,7 +121,13 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
         const gainValue = base(clip, asset) * normalizationGain(asset, audioSettings) * clipFadeGain(clip, nextPositionMs)
           * trackAutomationGain(clip, tabs, nextPositionMs, arrangement.durationMs);
         const current = playing.get(clip.id);
-        if (current) smoothAudioGain(current.gain.gain, safeGain(gainValue), graph.context);
+        if (current) {
+          const targetGain = safeGain(gainValue);
+          if (Math.abs(current.targetGain - targetGain) > .0001) {
+            current.targetGain = targetGain;
+            smoothAudioGain(current.gain.gain, targetGain, graph.context);
+          }
+        }
         else {
           const created = createPlayingElement(graph, asset, clip, nextPositionMs, gainValue);
           playing.set(clip.id, created); pending.push(created.ready);
