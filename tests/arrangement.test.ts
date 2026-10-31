@@ -3,7 +3,7 @@ import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration,
 import { calculateDuckingDb, dbToGain, duckingEnvelope } from '../src/lib/audio';
 import {
   calculateGroupedDuckingDb, createAutomationState, detachAutomationGroup,
-  updateAutomationGroup, updateAutomationTransition
+  reconcileAutomationAssignments, updateAutomationGroup, updateAutomationTransition
 } from '../src/lib/automation';
 import { createAutomationSegments } from '../src/components/AutomationEditor';
 import type { ArrangementSettings, MediaAsset } from '../src/types';
@@ -89,6 +89,16 @@ describe('automation groups', () => {
     expect(changed.assignments.every(item => item.fadeDownGroupId === groupId)).toBe(true);
   });
 
+  it('keeps fade and level groups when trimmed voice boundaries are rebuilt', () => {
+    const state = createAutomationState(arrangement, audioSettings);
+    const changed = updateAutomationTransition(state, state.assignments[0].fadeDownGroupId, 1_750, 400);
+    const rebuilt = createArrangement([asset('song', 'music', 100_000)], [asset('v1', 'voice', 3_000), asset('v2', 'voice', 4_000)],
+      { ...settings, voiceIntervalMs: 30_000 });
+    const reconciled = reconcileAutomationAssignments(changed, arrangement.voice, rebuilt.voice);
+    expect(reconciled.assignments[0].fadeDownGroupId).toBe(changed.assignments[0].fadeDownGroupId);
+    expect(reconciled.groups.find(item => item.id === reconciled.assignments[0].fadeDownGroupId)).toMatchObject({ value: 1_750, offsetMs: 400 });
+  });
+
   it('never draws a ducking transition backwards when voice clips are close together', () => {
     const closeArrangement = createArrangement(
       [asset('song', 'music', 100_000)],
@@ -164,6 +174,19 @@ describe('arrangement engine', () => {
     const voices = [asset('v1', 'voice', 25_000), asset('v2', 'voice', 25_000)];
     const result = createArrangement([], voices, { ...settings, voiceIntervalMs: 10_000 });
     expect(result.voice.map(clip => clip.startMs)).toEqual([10_000, 35_000]);
+  });
+
+  it('never drops or repeats voices and reduces spacing before extending duration', () => {
+    const voices = [asset('v1', 'voice', 20_000), asset('v2', 'voice', 20_000), asset('v3', 'voice', 20_000)];
+    const fitted = createArrangement([], voices, { ...settings, targetDurationMs: 70_000, voiceIntervalMs: 30_000 });
+    expect(fitted.voice.map(clip => clip.assetId)).toEqual(['v1', 'v2', 'v3']);
+    expect(fitted.durationMs).toBe(70_000);
+    expect(fitted.warnings).toContain('voiceSpacingReduced');
+
+    const extended = createArrangement([], voices, { ...settings, targetDurationMs: 50_000, voiceIntervalMs: 30_000 });
+    expect(extended.voice.map(clip => clip.assetId)).toEqual(['v1', 'v2', 'v3']);
+    expect(extended.durationMs).toBe(60_000);
+    expect(extended.warnings).toContain('durationExtendedForVoices');
   });
 
   it('uses a repeatable seeded shuffle', () => {

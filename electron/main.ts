@@ -7,7 +7,7 @@ import { Worker } from 'node:worker_threads';
 import ffmpegStatic from 'ffmpeg-static';
 import { readProjectArchive, safeProjectName } from './projectArchive.js';
 import { buildExportPlan, codecArguments, collectProcessResult, parseProgress } from './exportAudio.js';
-import { generateWaveforms, scanImportPaths } from './importAudio.js';
+import { analyzeSilence, generateWaveforms, scanImportPaths } from './importAudio.js';
 import { preparePreviewProxy, registerMediaProtocol } from './mediaProtocol.js';
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'francis-media', privileges: {
@@ -160,6 +160,14 @@ ipcMain.handle('media:generate-waveforms', async (event, filePaths: string[]) =>
   const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
   return generateWaveforms(binary, filePaths,
     (completed, total) => event.sender.send('media:import-progress', { completed, total }));
+});
+ipcMain.handle('media:analyze-silence', async (event, request: any) => {
+  if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');
+  const binary = app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic;
+  return analyzeSilence(binary, request.items, request.thresholdDb, request.paddingMs, request.minimumSilenceMs,
+    (completed, total) => event.sender.send('media:import-progress', {
+      jobId: request.jobId, kind: 'voice', completed, total
+    }));
 });
 ipcMain.handle('media:prepare-previews', async (_event, filePaths: string[]) => {
   const binary = ffmpegStatic ? (app.isPackaged ? ffmpegStatic.replace('app.asar', 'app.asar.unpacked') : ffmpegStatic) : null;

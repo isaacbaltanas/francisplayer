@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { createArrangement, durationToIncludeAllMusic, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
-import { addAutomationAssignment, createAutomationState, syncDefaultAutomationGroups } from './lib/automation';
+import { addAutomationAssignment, createAutomationState, reconcileAutomationAssignments, syncDefaultAutomationGroups } from './lib/automation';
 import { formatBytes, formatDuration } from './lib/format';
 import { filesToAssets } from './lib/media';
 import { useTimelinePlayer } from './hooks/useTimelinePlayer';
@@ -25,7 +25,7 @@ const defaultSettings: ArrangementSettings = {
   musicOrder: 'sequential',
   voiceOrder: 'sequential',
   repeatMusic: true,
-  musicFillMode: 'repeat',
+  musicFillMode: 'random',
   voicePlacement: 'interval',
   voiceIntervalMs: 30_000,
   allowVoiceOverlap: false,
@@ -64,7 +64,11 @@ const defaultEditingPreferences: EditingPreferences = {
   showFileLoudness: true,
   automationDisplayUnit: 'percent',
   showAutomations: true,
-  mixEditorMode: 'values'
+  mixEditorMode: 'values',
+  trimSilenceEnabled: false,
+  trimSilenceThresholdDb: -40,
+  trimSilencePaddingMs: 80,
+  trimSilenceMinimumMs: 120
 };
 
 const acceptAudio = '.mp3,.wav,.wave,.m4a,.aac,.flac,.ogg,.oga,.opus,.aif,.aiff,.wma,audio/*';
@@ -134,6 +138,7 @@ interface AssetListProps {
   audioSettings: AudioSettings;
   onFiles: (files: File[], kind: MediaKind, tabId: string) => void;
   onRemove: (id: string) => void;
+  onRestoreTrim: (id: string) => void;
   onPreview: (asset: MediaAsset) => void;
   onAddAll: () => void;
   onSelectTab: (id: string) => void;
@@ -146,7 +151,7 @@ interface AssetListProps {
 }
 
 function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, occurrences, allowAssetReuse, showFileLoudness, audioSettings,
-  onFiles, onRemove, onPreview, onAddAll, onSelectTab, onAddTab, onRenameTab, onMoveTab, onRemoveTab,
+  onFiles, onRemove, onRestoreTrim, onPreview, onAddAll, onSelectTab, onAddTab, onRenameTab, onMoveTab, onRemoveTab,
   onToggleLocalAutomation, onInsertionChange }: AssetListProps) {
   const { t, i18n } = useTranslation();
   const input = useRef<HTMLInputElement>(null);
@@ -220,6 +225,7 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
         <div className="asset-info">
           <strong title={asset.name}>{asset.name}</strong>
           <span>{asset.durationMs ? formatDuration(asset.durationMs) : '—'} · {formatBytes(asset.sizeBytes, i18n.language)}
+            {asset.sourceDurationMs !== undefined && asset.durationMs < asset.sourceDurationMs && <b className="trim-indicator" title={t('trimmedAudio')}> · ✂</b>}
             {asset.integrity === 'warning' && <b className="integrity-warning" title={t('admittedWithWarning')}> · !</b>}</span>
           {showFileLoudness && asset.analysis && (() => { const gain = normalizationAdjustmentDb(asset.analysis, audioSettings); return <span className="file-loudness" title={t('fileLoudnessDetail')}>
             {asset.analysis.integratedLufs.toFixed(1)} LUFS · {asset.analysis.truePeakDbtp.toFixed(1)} dBTP · {gain >= 0 ? '+' : ''}{gain.toFixed(1)} dB
@@ -229,6 +235,8 @@ function AssetList({ kind, assets, tabs, activeTabId, insertion, activePreview, 
         <span className={`highlight-button ${used ? 'active' : ''}`} role="status"
           title={t(used ? 'assetOnTimeline' : 'assetNotOnTimeline')}
           aria-label={t(used ? 'assetOnTimeline' : 'assetNotOnTimeline')}>◉</span>
+        {asset.sourceDurationMs !== undefined && <button className="restore-trim-button" onClick={() => onRestoreTrim(asset.id)}
+          title={t('restoreThisTrim')} aria-label={t('restoreThisTrim')}>↔</button>}
         <button className="remove-button" onClick={() => onRemove(asset.id)} aria-label={t('remove')}>×</button>
       </article>;})}
     </div>
@@ -264,10 +272,14 @@ interface SettingsPanelProps {
   onAudioChange: (patch: Partial<AudioSettings>) => void;
   onAutomationChange: (state: AutomationState) => void;
   onEditingPreferencesChange: (patch: Partial<EditingPreferences>) => void;
+  trimmingVoices: boolean;
+  onTrimVoices: () => void;
+  onRestoreVoiceTrims: () => void;
   onMount: () => void;
 }
 
-function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, voiceAssets, onChange, onAudioChange, onAutomationChange, onEditingPreferencesChange, onMount }: SettingsPanelProps) {
+function SettingsPanel({ settings, audioSettings, automation, editingPreferences, mounted, canMount, voiceAssets, onChange, onAudioChange, onAutomationChange,
+  onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims, onMount }: SettingsPanelProps) {
   const { t } = useTranslation();
   const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
@@ -349,6 +361,12 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         <span>{t('seed')}</span>
         <input type="number" value={settings.seed} onChange={(event) => onChange({ seed: Number(event.target.value) || 1 })} />
       </label>
+      <div className="mount-priorities full">
+        <strong>{t('mountPriorities')}</strong>
+        <ol><li>{t('priorityAllVoices')}</li><li>{t('priorityDuration')}</li><li>{t('priorityVoiceSpacing')}</li>
+          <li>{t('priorityAllMusic')}</li><li>{t('priorityFillMusic')}</li></ol>
+        <p>{t('priorityVoiceRule')}</p>
+      </div>
     </div>}
 
     {tab === 'audio' && <div className="settings-tab-content"><div className="audio-settings-heading">
@@ -437,6 +455,24 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         onChange={(analyzeLoudnessOnImport) => onEditingPreferencesChange({ analyzeLoudnessOnImport })} />
       <Toggle label={t('showFileLoudness')} checked={editingPreferences.showFileLoudness}
         onChange={(showFileLoudness) => onEditingPreferencesChange({ showFileLoudness })} />
+      <div className="settings-divider full"><h3>{t('silenceTrim')}</h3></div>
+      <Toggle label={t('enableSilenceTrim')} checked={editingPreferences.trimSilenceEnabled}
+        onChange={(trimSilenceEnabled) => onEditingPreferencesChange({ trimSilenceEnabled })} />
+      <DbField label={t('silenceThreshold')} value={editingPreferences.trimSilenceThresholdDb} min={-80} max={-10}
+        onChange={(trimSilenceThresholdDb) => onEditingPreferencesChange({ trimSilenceThresholdDb })} />
+      <MsField label={t('silencePadding')} value={editingPreferences.trimSilencePaddingMs}
+        onChange={(trimSilencePaddingMs) => onEditingPreferencesChange({ trimSilencePaddingMs })} />
+      <MsField label={t('minimumSilence')} value={editingPreferences.trimSilenceMinimumMs}
+        onChange={(trimSilenceMinimumMs) => onEditingPreferencesChange({ trimSilenceMinimumMs })} />
+      <div className="trim-actions full">
+        <button disabled={!editingPreferences.trimSilenceEnabled || !voiceAssets.length || trimmingVoices} onClick={onTrimVoices}>
+          {t(trimmingVoices ? 'analyzingSilence' : 'trimAllVoices')}
+        </button>
+        <button disabled={!voiceAssets.some(asset => asset.sourceDurationMs !== undefined) || trimmingVoices} onClick={onRestoreVoiceTrims}>
+          {t('restoreVoiceTrims')}
+        </button>
+      </div>
+      <p className="settings-help full">{t('silenceTrimHelp')}</p>
       <p className="settings-help">{t('integrityHelp')}</p>
       <p className="settings-help">{t('snapControlHint')}</p>
     </div>}
@@ -487,7 +523,7 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
 }
 
 function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef, preferences, dimmed, highlighted, selected,
-  onSelect, onMove, onRemove, onFadeChange, onDragGuide, onDragEnd }: {
+  onSelect, onMove, onRemove, onFadeChange, onSourceTrimChange, onDragGuide, onDragEnd }: {
   clip: TimelineClip;
   waveform: number[];
   overlapping: boolean;
@@ -501,25 +537,58 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
   onMove: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
   onRemove: (clip: TimelineClip) => void;
   onFadeChange: (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => void;
+  onSourceTrimChange: (clipId: string, sourceOffsetMs: number, durationMs: number, startMs: number) => void;
   onDragGuide: (guideMs: number | null) => void;
   onDragEnd: () => void;
 }) {
   const { t } = useTranslation();
   const [drag, setDrag] = useState<{ clientX: number; startMs: number; previewStartMs: number; guideMs: number | null; moved: boolean } | null>(null);
   const [fadeDrag, setFadeDrag] = useState<{ edge: 'in' | 'out'; clientX: number; initialMs: number } | null>(null);
+  const [trimDrag, setTrimDrag] = useState<{ edge: 'in' | 'out'; clientX: number; initialOffsetMs: number;
+    initialDurationMs: number; previewOffsetMs: number; previewDurationMs: number; previewStartMs: number } | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const totalMs = arrangement.durationMs;
-  const left = ((drag?.previewStartMs ?? clip.startMs) / totalMs) * 100;
-  const width = Math.max((clip.durationMs / totalMs) * 100, 0.18);
+  const left = ((trimDrag?.previewStartMs ?? drag?.previewStartMs ?? clip.startMs) / totalMs) * 100;
+  const displayDurationMs = trimDrag?.previewDurationMs ?? clip.durationMs;
+  const width = Math.max((displayDurationMs / totalMs) * 100, 0.18);
   const style = { left: `${left}%`, width: `${width}%`, backgroundColor: clip.color };
   const fadeInPercent = Math.min(100, (clip.fadeInMs ?? 0) / clip.durationMs * 100);
   const fadeOutPercent = Math.min(100, (clip.fadeOutMs ?? 0) / clip.durationMs * 100);
-  const visibleWaveform = clip.sourceDurationMs && clip.durationMs < clip.sourceDurationMs
-    ? waveform.slice(0, Math.max(1, Math.round(waveform.length * clip.durationMs / clip.sourceDurationMs))) : waveform;
+  const originalSourceDurationMs = clip.originalSourceDurationMs ?? clip.sourceDurationMs ?? clip.durationMs;
+  const visibleOffsetMs = trimDrag?.previewOffsetMs ?? clip.sourceOffsetMs ?? 0;
+  const waveformStart = Math.max(0, Math.floor(waveform.length * visibleOffsetMs / Math.max(1, originalSourceDurationMs)));
+  const waveformEnd = Math.min(waveform.length, Math.ceil(waveform.length * (visibleOffsetMs + displayDurationMs) / Math.max(1, originalSourceDurationMs)));
+  const visibleWaveform = waveform.slice(waveformStart, Math.max(waveformStart + 1, waveformEnd));
   const waveformPath = visibleWaveform.map((peak, index) => `M${index + .5} ${50 - peak * 43}V${50 + peak * 43}`).join('');
   const startFadeDrag = (event: React.PointerEvent<HTMLButtonElement>, edge: 'in' | 'out') => {
     event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
     setFadeDrag({ edge, clientX: event.clientX, initialMs: edge === 'in' ? (clip.fadeInMs ?? 0) : (clip.fadeOutMs ?? 0) });
+  };
+  const startTrimDrag = (event: React.PointerEvent<HTMLButtonElement>, edge: 'in' | 'out') => {
+    event.preventDefault(); event.stopPropagation(); event.currentTarget.setPointerCapture(event.pointerId);
+    setTrimDrag({ edge, clientX: event.clientX, initialOffsetMs: clip.sourceOffsetMs ?? 0, initialDurationMs: clip.durationMs,
+      previewOffsetMs: clip.sourceOffsetMs ?? 0, previewDurationMs: clip.durationMs, previewStartMs: clip.startMs });
+  };
+  const moveTrimDrag = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (!trimDrag || !canvasRef.current) return;
+    event.preventDefault(); event.stopPropagation();
+    const deltaMs = (event.clientX - trimDrag.clientX) / Math.max(1, canvasRef.current.getBoundingClientRect().width) * arrangement.durationMs;
+    const originalEnd = trimDrag.initialOffsetMs + trimDrag.initialDurationMs;
+    if (trimDrag.edge === 'in') {
+      let previewOffsetMs = Math.max(0, Math.min(originalEnd - 100, trimDrag.initialOffsetMs + deltaMs));
+      let previewStartMs = clip.startMs + previewOffsetMs - trimDrag.initialOffsetMs;
+      if (previewStartMs < 0) { previewOffsetMs -= previewStartMs; previewStartMs = 0; }
+      setTrimDrag(current => current ? { ...current, previewOffsetMs, previewDurationMs: originalEnd - previewOffsetMs, previewStartMs } : current);
+    } else {
+      const maximumEndMs = Math.min(originalSourceDurationMs,
+        trimDrag.initialOffsetMs + Math.max(100, arrangement.durationMs - clip.startMs));
+      const previewEndMs = Math.max(trimDrag.initialOffsetMs + 100, Math.min(maximumEndMs, originalEnd + deltaMs));
+      setTrimDrag(current => current ? { ...current, previewDurationMs: previewEndMs - trimDrag.initialOffsetMs } : current);
+    }
+  };
+  const finishTrimDrag = () => {
+    if (trimDrag) onSourceTrimChange(clip.id, Math.round(trimDrag.previewOffsetMs), Math.round(trimDrag.previewDurationMs), Math.round(trimDrag.previewStartMs));
+    setTrimDrag(null);
   };
   return <div className={`timeline-clip ${clip.kind} ${clip.truncated ? 'truncated' : ''} ${drag ? 'dragging' : ''} ${selected ? 'clip-selected' : ''} ${dimmed ? 'clip-dimmed' : ''} ${highlighted ? 'clip-highlighted' : ''} ${overlapping ? 'clip-overlapping' : ''}`} style={style}
     title={`${clip.kind === 'missing' ? t('missingMusic') : clip.name} · ${formatDuration(clip.durationMs)}`}
@@ -589,6 +658,10 @@ function TimelineClipView({ clip, waveform, overlapping, arrangement, canvasRef,
         const px = event.currentTarget.parentElement?.getBoundingClientRect().width ?? 1;
         onFadeChange(clip.id, clip.kind, 'out', Math.max(0, Math.min(clip.durationMs, fadeDrag.initialMs - (event.clientX - fadeDrag.clientX) / px * clip.durationMs)));
       }} onPointerUp={() => setFadeDrag(null)}>◣</button>}
+    {clip.kind === 'voice' && <button className="source-trim-handle source-trim-in" title={t('adjustSourceStart')}
+      onPointerDown={(event) => startTrimDrag(event, 'in')} onPointerMove={moveTrimDrag} onPointerUp={finishTrimDrag}>↔</button>}
+    {clip.kind === 'voice' && <button className="source-trim-handle source-trim-out" title={t('adjustSourceEnd')}
+      onPointerDown={(event) => startTrimDrag(event, 'out')} onPointerMove={moveTrimDrag} onPointerUp={finishTrimDrag}>↔</button>}
     <span>{clip.kind === 'missing' ? t('missingMusic') : clip.name}</span>
     {clip.kind !== 'missing' && <small>{formatDuration(clip.durationMs)}</small>}
     {clip.manuallyPositioned && <i className="manual-position-dot" title={t('manuallyPositioned')}>⚓</i>}
@@ -615,6 +688,7 @@ interface TimelineProps {
   onMoveClip: (clipId: string, kind: TimelineClip['kind'], startMs: number, guideMs: number | null) => void;
   onRemoveClips: (clipIds: string[]) => void;
   onFadeChange: (clipId: string, kind: TimelineClip['kind'], edge: 'in' | 'out', durationMs: number) => void;
+  onSourceTrimChange: (clipId: string, sourceOffsetMs: number, durationMs: number, startMs: number) => void;
   onTabChange: (id: string, patch: Partial<LibraryTab>) => void;
   onDropAsset: (assetId: string, kind: MediaKind, startMs: number) => void;
   onPlay: () => void;
@@ -623,7 +697,7 @@ interface TimelineProps {
 }
 
 function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences,
-  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClips, onFadeChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
+  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClips, onFadeChange, onSourceTrimChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
@@ -750,7 +824,9 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
 
     {!arrangement ? <div className="timeline-empty"><p>{t('timelineEmpty')}</p></div> : <>
       {arrangement.warnings.length > 0 && <div className="warnings">{arrangement.warnings.map(warning =>
-        <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic' : 'warningVoiceOutside')}</p>)}</div>}
+        <p key={warning}>! {t(warning === 'missingMusic' ? 'warningMissingMusic'
+          : warning === 'durationExtendedForVoices' ? 'warningDurationExtended'
+          : warning === 'voiceSpacingReduced' ? 'warningSpacingReduced' : 'warningVoiceOutside')}</p>)}</div>}
       {voiceOverlaps.size > 0 && <div className="warnings overlap-warning"><p>! {t('warningVoiceOverlap', { count: voiceOverlaps.size })}</p></div>}
       <div className="timeline-shell">
         <div className="track-labels">
@@ -783,7 +859,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
                   arrangement={arrangement} canvasRef={canvasRef} preferences={editingPreferences}
                   dimmed={false} selected={selectedClipIds.has(clip.id)} onSelect={selectClip}
                   highlighted={false}
-                  onMove={onMoveClip} onRemove={(item) => onRemoveClips([item.id])} onFadeChange={onFadeChange}
+                  onMove={onMoveClip} onRemove={(item) => onRemoveClips([item.id])} onFadeChange={onFadeChange} onSourceTrimChange={onSourceTrimChange}
                   onDragGuide={setSnapGuideMs}
                   onDragEnd={() => setSnapGuideMs(null)} />)}
               {tab.localAutomationEnabled && <TrackAutomationLane tab={tab}
@@ -824,6 +900,7 @@ export default function App() {
   const [importLogOpen, setImportLogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [trimmingVoices, setTrimmingVoices] = useState(false);
   const [, setHistoryRevision] = useState(0);
   const [importProgressJobs, setImportProgressJobs] = useState<Array<{
     id: string; kind?: MediaKind; label: string; completed: number; total: number;
@@ -997,8 +1074,16 @@ export default function App() {
         activePreviewRef.current = null;
         setActivePreview(null);
       };
+      const trimEndSeconds = (asset.trimEndMs ?? asset.sourceDurationMs ?? asset.durationMs) / 1000;
+      next.ontimeupdate = () => {
+        if (asset.trimEndMs !== undefined && next.currentTime >= trimEndSeconds) stopPreview();
+      };
       audio.current = next;
-      next.currentTime = 0;
+      if (next.readyState < HTMLMediaElement.HAVE_METADATA) await new Promise<void>((resolve, reject) => {
+        next.addEventListener('loadedmetadata', () => resolve(), { once: true });
+        next.addEventListener('error', () => reject(new Error('Metadata unavailable')), { once: true });
+      });
+      next.currentTime = (asset.trimStartMs ?? 0) / 1000;
       await next.play();
       if (generation !== previewGeneration.current) {
         next.pause(); next.removeAttribute('src'); next.load();
@@ -1038,6 +1123,75 @@ export default function App() {
   };
 
   const mount = () => buildArrangement(settings);
+
+  const rebuildAfterVoiceEdit = (nextVoices: MediaAsset[], preserveManualSourceTrims = false) => {
+    const nextVoiceSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'voice'), nextVoices,
+      activeVoiceTabId, voiceInsertion, settings.seed + 10_000);
+    const nextScheduledVoices = settings.voiceOrder === 'random'
+      ? shuffleWithSeed(nextVoiceSequence, settings.seed + 10_000) : nextVoiceSequence;
+    const nextSettings = settings.durationFromVoices && nextScheduledVoices.length
+      ? { ...settings, targetDurationMs: voiceScheduleDuration(nextScheduledVoices, settings.voiceIntervalMs, settings.allowVoiceOverlap) }
+      : settings;
+    if (nextSettings !== settings) setSettings(nextSettings);
+    if (!arrangement) return;
+    player.reset(); stopPreview();
+    const generated = createArrangement(musicSequence, nextVoiceSequence, nextSettings);
+    const next = { ...generated, voice: preserveManualVoicePositions(arrangement.voice, generated.voice, generated.durationMs, preserveManualSourceTrims) };
+    setArrangement(next);
+    setAutomation(current => current ? reconcileAutomationAssignments(current, arrangement.voice, next.voice) : current);
+  };
+
+  const trimAllVoices = async () => {
+    if (!window.francisDesktop?.analyzeSilence || !voices.length || trimmingVoices) return;
+    const jobId = crypto.randomUUID();
+    setTrimmingVoices(true); setError(null);
+    setImportProgressJobs(current => [...current, { id: jobId, kind: 'voice', label: t('analyzingSilence'), completed: 0, total: voices.length }]);
+    try {
+      const results = await window.francisDesktop.analyzeSilence({
+        jobId,
+        items: voices.map(asset => ({ path: asset.path, durationMs: asset.sourceDurationMs ?? asset.durationMs })),
+        thresholdDb: editingPreferences.trimSilenceThresholdDb,
+        paddingMs: editingPreferences.trimSilencePaddingMs,
+        minimumSilenceMs: editingPreferences.trimSilenceMinimumMs
+      });
+      const byPath = new Map(results.map(result => [result.path, result]));
+      const nextVoices = voices.map(asset => {
+        const result = byPath.get(asset.path);
+        if (!result) return asset;
+        const sourceDurationMs = asset.sourceDurationMs ?? asset.durationMs;
+        if (!result.trimmed) {
+          const { sourceDurationMs: _sourceDurationMs, trimStartMs: _trimStartMs, trimEndMs: _trimEndMs, ...rest } = asset;
+          return { ...rest, durationMs: sourceDurationMs };
+        }
+        return { ...asset, sourceDurationMs, trimStartMs: result.trimStartMs, trimEndMs: result.trimEndMs,
+          durationMs: Math.max(100, result.trimEndMs - result.trimStartMs) };
+      });
+      setVoices(nextVoices); rebuildAfterVoiceEdit(nextVoices);
+    } catch {
+      setError(t('silenceTrimError'));
+    } finally {
+      setTrimmingVoices(false);
+      setImportProgressJobs(current => current.filter(job => job.id !== jobId));
+    }
+  };
+
+  const restoreVoiceTrims = () => {
+    const nextVoices = voices.map(asset => {
+      if (asset.sourceDurationMs === undefined) return asset;
+      const { sourceDurationMs, trimStartMs: _trimStartMs, trimEndMs: _trimEndMs, ...rest } = asset;
+      return { ...rest, durationMs: sourceDurationMs };
+    });
+    setVoices(nextVoices); rebuildAfterVoiceEdit(nextVoices);
+  };
+
+  const restoreSingleVoiceTrim = (assetId: string) => {
+    const nextVoices = voices.map(asset => {
+      if (asset.id !== assetId || asset.sourceDurationMs === undefined) return asset;
+      const { sourceDurationMs, trimStartMs: _trimStartMs, trimEndMs: _trimEndMs, ...rest } = asset;
+      return { ...rest, durationMs: sourceDurationMs };
+    });
+    setVoices(nextVoices); rebuildAfterVoiceEdit(nextVoices);
+  };
 
   const addAllToTimeline = (kind: MediaKind) => {
     const requiredDurationMs = kind === 'music'
@@ -1119,6 +1273,15 @@ export default function App() {
     });
   };
 
+  const changeClipSourceTrim = (clipId: string, sourceOffsetMs: number, durationMs: number, startMs: number) => {
+    player.pause();
+    setArrangement(current => current ? { ...current, voice: current.voice.map(clip => clip.id === clipId ? {
+      ...clip, sourceOffsetMs, durationMs, sourceDurationMs: durationMs, startMs,
+      fadeInMs: Math.min(clip.fadeInMs ?? 0, durationMs), fadeOutMs: Math.min(clip.fadeOutMs ?? 0, durationMs),
+      sourceTrimManuallyAdjusted: true
+    } : clip).sort((left, right) => left.startMs - right.startMs) } : current);
+  };
+
   const dropAsset = (assetId: string, kind: MediaKind, proposedStartMs: number) => {
     if (!arrangement) return;
     if (!editingPreferences.allowAssetReuse && (occurrences.get(assetId) ?? 0) > 0) return;
@@ -1128,7 +1291,8 @@ export default function App() {
     const draft: TimelineClip = {
       id: `clip-${asset.id}-${crypto.randomUUID()}`,
       assetId: asset.id, kind, name: asset.name, startMs: proposedStartMs, generatedStartMs: proposedStartMs,
-      durationMs, sourceDurationMs: asset.durationMs, color: asset.color, manuallyPositioned: true,
+      durationMs, sourceDurationMs: asset.durationMs, sourceOffsetMs: asset.trimStartMs ?? 0,
+      originalSourceDurationMs: asset.sourceDurationMs ?? asset.durationMs, color: asset.color, manuallyPositioned: true,
       libraryTabId: asset.libraryTabId
     };
     const snapped = editingPreferences.snapEnabled ? snapClipStart({
@@ -1187,7 +1351,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.21.2', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.22.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1441,6 +1605,7 @@ export default function App() {
             activeTabId={activeMusicTabId} insertion={musicInsertion} activePreview={activePreview} occurrences={occurrences}
             allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
             onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={() => addAllToTimeline('music')}
+            onRestoreTrim={() => undefined}
             onSelectTab={setActiveMusicTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
             onToggleLocalAutomation={(id) => {
@@ -1455,6 +1620,7 @@ export default function App() {
             activeTabId={activeVoiceTabId} insertion={voiceInsertion} activePreview={activePreview} occurrences={occurrences}
             allowAssetReuse={editingPreferences.allowAssetReuse} showFileLoudness={editingPreferences.showFileLoudness} audioSettings={audioSettings} onFiles={addFiles}
             onRemove={removeAsset} onPreview={(asset) => void preview(asset)} onAddAll={() => addAllToTimeline('voice')}
+            onRestoreTrim={restoreSingleVoiceTrim}
             onSelectTab={setActiveVoiceTabId} onAddTab={addLibraryTab}
             onRenameTab={(id, name) => updateLibraryTab(id, { name })} onMoveTab={moveLibraryTab} onRemoveTab={removeLibraryTab}
             onToggleLocalAutomation={(id) => {
@@ -1473,13 +1639,17 @@ export default function App() {
           onAudioChange={changeAudioSettings}
           onAutomationChange={setAutomation}
           onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
+          trimmingVoices={trimmingVoices}
+          onTrimVoices={() => void trimAllVoices()}
+          onRestoreVoiceTrims={restoreVoiceTrims}
           onMount={mount} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
         onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
-        onMoveClip={moveClip} onRemoveClips={removeClips} onFadeChange={changeClipFade} onTabChange={updateLibraryTab} onDropAsset={dropAsset}
+        onMoveClip={moveClip} onRemoveClips={removeClips} onFadeChange={changeClipFade} onSourceTrimChange={changeClipSourceTrim}
+        onTabChange={updateLibraryTab} onDropAsset={dropAsset}
         onPlay={() => { stopPreview(); player.play(); }}
         onPause={player.pause} onSeek={player.seek} />
     </main>

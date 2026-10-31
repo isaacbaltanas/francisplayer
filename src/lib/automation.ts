@@ -134,6 +134,31 @@ export const removeAutomationAssignment = (state: AutomationState, voiceClipId: 
   assignments: state.assignments.filter(item => item.voiceClipId !== voiceClipId)
 });
 
+export const reconcileAutomationAssignments = (
+  state: AutomationState,
+  previousClips: TimelineClip[],
+  nextClips: TimelineClip[]
+): AutomationState => {
+  const queues = new Map<string, AutomationAssignment[]>();
+  previousClips.forEach(clip => {
+    const assignment = state.assignments.find(item => item.voiceClipId === clip.id);
+    if (!assignment) return;
+    const key = clip.assetId ?? clip.id;
+    queues.set(key, [...(queues.get(key) ?? []), assignment]);
+  });
+  const first = (type: AutomationGroupType) => state.groups.find(item => item.type === type)?.id ?? '';
+  return {
+    ...state,
+    assignments: nextClips.map(clip => {
+      const source = queues.get(clip.assetId ?? clip.id)?.shift();
+      return source ? { ...source, voiceClipId: clip.id } : {
+        voiceClipId: clip.id, highGroupId: first('high'), lowGroupId: first('low'),
+        fadeDownGroupId: first('fadeDown'), fadeUpGroupId: first('fadeUp')
+      };
+    })
+  };
+};
+
 const settingsFor = (state: AutomationState, assignment: AutomationAssignment, fallback: AudioSettings): AudioSettings => ({
   ...fallback,
   musicGainDb: percentToDb(getGroup(state, assignment.highGroupId)?.value ?? dbToPercent(fallback.musicGainDb)),

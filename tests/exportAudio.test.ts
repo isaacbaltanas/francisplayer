@@ -17,6 +17,17 @@ describe('local audio export', () => {
     expect(plan.filterScript).toContain('amix=inputs=2');
   });
 
+  it('exports a non-destructive trimmed source range', () => {
+    const payload = {
+      assets: [{ id: 'v', path: '/voice.wav' }], libraryTabs: [], automation: null,
+      audioSettings: { musicGainDb: 0, voiceGainDb: 0, duckingGainDb: -20, fadeDownMs: 500, fadeUpMs: 500 },
+      arrangement: { durationMs: 5_000, music: [], voice: [
+        { id: 'v1', assetId: 'v', kind: 'voice', startMs: 1_000, durationMs: 2_500, sourceOffsetMs: 620 }
+      ] }
+    };
+    expect(buildExportPlan(payload).filterScript).toContain('atrim=start=0.62:end=3.12');
+  });
+
   it('selects codecs and reads FFmpeg progress', () => {
     expect(codecArguments({ format: 'wav', bitDepth: 24 })).toContain('pcm_s24le');
     expect(codecArguments({ format: 'aac', bitrate: 256 })).toContain('256k');

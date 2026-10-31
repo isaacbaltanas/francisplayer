@@ -58,6 +58,8 @@ const makeClip = (asset: MediaAsset, startMs: number, durationMs = asset.duratio
   generatedStartMs: startMs,
   durationMs,
   sourceDurationMs: asset.durationMs,
+  sourceOffsetMs: asset.trimStartMs ?? 0,
+  originalSourceDurationMs: asset.sourceDurationMs ?? asset.durationMs,
   color: asset.color,
   libraryTabId: asset.libraryTabId,
   truncated: durationMs < asset.durationMs,
@@ -84,10 +86,13 @@ export const intervalForVoiceDuration = (assets: MediaAsset[], targetDurationMs:
     if (voiceScheduleDuration(assets, middle, allowOverlap) <= targetDurationMs) low = middle;
     else high = middle;
   }
-  return Math.round(low / 1000) * 1000;
+  let result = Math.round(low / 1000) * 1000;
+  while (result > 0 && voiceScheduleDuration(assets, result, allowOverlap) > targetDurationMs) result -= 1000;
+  return result;
 };
 
-export const preserveManualVoicePositions = (previous: TimelineClip[], generated: TimelineClip[], durationMs: number): TimelineClip[] => {
+export const preserveManualVoicePositions = (previous: TimelineClip[], generated: TimelineClip[], durationMs: number,
+  preserveManualSourceTrims = true): TimelineClip[] => {
   const queues = new Map<string, TimelineClip[]>();
   previous.forEach(clip => {
     const key = clip.assetId ?? clip.id;
@@ -99,10 +104,18 @@ export const preserveManualVoicePositions = (previous: TimelineClip[], generated
     const old = queue.shift();
     if (!old) return clip;
     used.add(old.id);
+    if (preserveManualSourceTrims && old.sourceTrimManuallyAdjusted) {
+      const startMs = Math.max(0, Math.min(old.startMs, durationMs - old.durationMs));
+      return { ...clip, id: old.id, startMs, durationMs: old.durationMs, sourceDurationMs: old.durationMs,
+        sourceOffsetMs: old.sourceOffsetMs, originalSourceDurationMs: old.originalSourceDurationMs,
+        sourceTrimManuallyAdjusted: true, manuallyPositioned: old.manuallyPositioned,
+        fadeInMs: Math.min(old.fadeInMs ?? 0, old.durationMs), fadeOutMs: Math.min(old.fadeOutMs ?? 0, old.durationMs) };
+    }
     if (!old.manuallyPositioned) return { ...clip, id: old.id, fadeInMs: old.fadeInMs, fadeOutMs: old.fadeOutMs ?? clip.fadeOutMs };
-    const startMs = Math.max(0, Math.min(old.startMs, durationMs - old.durationMs));
-    return { ...clip, id: old.id, startMs, durationMs: old.durationMs, sourceDurationMs: old.sourceDurationMs,
-      fadeInMs: old.fadeInMs, fadeOutMs: old.fadeOutMs, manuallyPositioned: true };
+    const startMs = Math.max(0, Math.min(old.startMs, durationMs - clip.durationMs));
+    return { ...clip, id: old.id, startMs,
+      fadeInMs: Math.min(old.fadeInMs ?? 0, clip.durationMs), fadeOutMs: Math.min(old.fadeOutMs ?? clip.fadeOutMs ?? 0, clip.durationMs),
+      manuallyPositioned: true };
   });
   previous.filter(clip => clip.manuallyPositioned && !used.has(clip.id)).forEach(old => {
     merged.push({ ...old, startMs: Math.max(0, Math.min(old.startMs, durationMs - old.durationMs)) });
@@ -115,12 +128,19 @@ export const createArrangement = (
   voiceAssets: MediaAsset[],
   settings: ArrangementSettings
 ): Arrangement => {
-  const durationMs = Math.max(1_000, settings.targetDurationMs);
   const validMusicAssets = musicAssets.filter(asset => asset.durationMs > 0);
   const validVoiceAssets = voiceAssets.filter(asset => asset.durationMs > 0);
   const warnings: string[] = [];
   const music: TimelineClip[] = [];
   const voice: TimelineClip[] = [];
+  const voices = settings.voiceOrder === 'random'
+    ? shuffleWithSeed(validVoiceAssets, settings.seed + 10_000)
+    : [...validVoiceAssets];
+  const minimumVoiceDuration = settings.allowVoiceOverlap
+    ? Math.max(0, ...voices.map(asset => asset.durationMs))
+    : voices.reduce((sum, asset) => sum + asset.durationMs, 0);
+  const durationMs = Math.max(1_000, settings.targetDurationMs, minimumVoiceDuration);
+  if (durationMs > settings.targetDurationMs) warnings.push('durationExtendedForVoices');
 
   if (validMusicAssets.length === 0) {
     music.push({
@@ -157,37 +177,31 @@ export const createArrangement = (
     }
   }
 
-  const voices = settings.voiceOrder === 'random'
-    ? shuffleWithSeed(validVoiceAssets, settings.seed + 10_000)
-    : [...validVoiceAssets];
-
   if (voices.length > 0) {
     if (settings.voicePlacement === 'uniform') {
-      const slot = durationMs / (voices.length + 1);
-      let previousEnd = 0;
-      voices.forEach((asset, index) => {
-        let startMs = Math.max(0, Math.round(slot * (index + 1) - asset.durationMs / 2));
-        if (!settings.allowVoiceOverlap) startMs = Math.max(startMs, previousEnd);
-        if (startMs + asset.durationMs > durationMs) {
-          warnings.push('voiceOutside');
-          return;
-        }
-        voice.push(makeClip(asset, startMs));
-        previousEnd = startMs + asset.durationMs;
-      });
+      if (settings.allowVoiceOverlap) {
+        const slot = durationMs / (voices.length + 1);
+        voices.forEach((asset, index) => voice.push(makeClip(asset,
+          Math.max(0, Math.min(durationMs - asset.durationMs, Math.round(slot * (index + 1) - asset.durationMs / 2))))));
+      } else {
+        const freeSpace = Math.max(0, durationMs - voices.reduce((sum, asset) => sum + asset.durationMs, 0));
+        const gap = freeSpace / (voices.length + 1);
+        let cursor = gap;
+        voices.forEach(asset => { voice.push(makeClip(asset, Math.round(cursor))); cursor += asset.durationMs + gap; });
+      }
     } else {
-      let scheduledStart = settings.voiceIntervalMs;
+      const fittedInterval = Math.min(settings.voiceIntervalMs,
+        intervalForVoiceDuration(voices, durationMs, settings.allowVoiceOverlap));
+      if (fittedInterval < settings.voiceIntervalMs) warnings.push('voiceSpacingReduced');
+      let scheduledStart = fittedInterval;
       let previousEnd = 0;
       voices.forEach((asset) => {
         let startMs = scheduledStart;
         if (!settings.allowVoiceOverlap) startMs = Math.max(startMs, previousEnd);
-        if (startMs + asset.durationMs > durationMs) {
-          warnings.push('voiceOutside');
-          return;
-        }
+        startMs = Math.max(0, Math.min(durationMs - asset.durationMs, startMs));
         voice.push(makeClip(asset, startMs));
         previousEnd = startMs + asset.durationMs;
-        scheduledStart += settings.voiceIntervalMs;
+        scheduledStart += fittedInterval;
       });
     }
   }

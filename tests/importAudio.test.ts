@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { inferCollectionName, parseLoudnessReport, waveformFromPcm } from '../electron/importAudio';
+import { inferCollectionName, parseLoudnessReport, parseSilenceBounds, waveformFromPcm } from '../electron/importAudio';
 
 describe('mass import naming', () => {
   it('reduces decoded PCM to normalized waveform peaks', () => {
@@ -25,5 +25,16 @@ describe('mass import naming', () => {
     expect(parseLoudnessReport(report, -14, -1)).toMatchObject({
       integratedLufs: -20, loudnessRangeLu: 4.2, truePeakDbtp: -2, recommendedGainDb: 1
     });
+  });
+
+  it('detects only leading and trailing silence and keeps safety padding', () => {
+    const report = '[silencedetect] silence_start: 0\n[silencedetect] silence_end: 0.62\n'
+      + '[silencedetect] silence_start: 4.8\n[silencedetect] silence_end: 5';
+    expect(parseSilenceBounds(report, 5_000, 80)).toEqual({ trimStartMs: 540, trimEndMs: 4_880, trimmed: true });
+  });
+
+  it('does not trim an entirely silent or implausibly short result', () => {
+    const report = '[silencedetect] silence_start: 0\n[silencedetect] silence_end: 5';
+    expect(parseSilenceBounds(report, 5_000, 0)).toEqual({ trimStartMs: 0, trimEndMs: 5_000, trimmed: false });
   });
 });

@@ -14,6 +14,7 @@ interface Window {
     onExportProgress: (callback: (progress: number) => void) => () => void;
     importPaths: (request: unknown) => Promise<any>;
     generateWaveforms: (filePaths: string[]) => Promise<Array<{ path: string; waveform: number[] }>>;
+    analyzeSilence: (request: unknown) => Promise<Array<{ path: string; trimStartMs: number; trimEndMs: number; trimmed: boolean }>>;
     preparePreviews: (filePaths: string[]) => Promise<string[]>;
     onImportProgress: (callback: (progress: { jobId?: string; kind?: 'music' | 'voice'; completed: number; total: number }) => void) => () => void;
   };

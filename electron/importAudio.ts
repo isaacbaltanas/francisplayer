@@ -108,6 +108,53 @@ export const extractWaveform = (binary: string, filePath: string) => new Promise
   process.once('exit', code => resolve(code === 0 ? waveformFromPcm(Buffer.concat(chunks)) : []));
 });
 
+export const parseSilenceBounds = (output: string, durationMs: number, paddingMs = 80) => {
+  const events = [...output.matchAll(/silence_(start|end):\s*(-?[\d.]+)/g)]
+    .map(match => ({ type: match[1] as 'start' | 'end', timeMs: Math.max(0, Number(match[2]) * 1000) }))
+    .filter(event => Number.isFinite(event.timeMs));
+  let leadingEndMs = 0;
+  let trailingStartMs = durationMs;
+  if (events[0]?.type === 'start' && events[0].timeMs <= 50) {
+    const end = events.find(event => event.type === 'end');
+    if (end) leadingEndMs = end.timeMs;
+  }
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event.type !== 'start') continue;
+    const followingEnd = events.slice(index + 1).find(candidate => candidate.type === 'end');
+    if (!followingEnd || followingEnd.timeMs >= durationMs - 100) trailingStartMs = event.timeMs;
+    break;
+  }
+  const trimStartMs = Math.max(0, Math.min(durationMs, Math.round(leadingEndMs - paddingMs)));
+  const trimEndMs = Math.max(trimStartMs, Math.min(durationMs, Math.round(trailingStartMs + paddingMs)));
+  if (trimEndMs - trimStartMs < 100) return { trimStartMs: 0, trimEndMs: durationMs, trimmed: false };
+  return { trimStartMs, trimEndMs, trimmed: trimStartMs > 0 || trimEndMs < durationMs };
+};
+
+const detectSilenceBounds = (binary: string, item: { path: string; durationMs: number }, thresholdDb: number,
+  paddingMs: number, minimumSilenceMs: number) => new Promise<{ path: string; trimStartMs: number; trimEndMs: number; trimmed: boolean }>(resolve => {
+  const process = spawn(binary, ['-hide_banner', '-i', item.path, '-map', '0:a:0', '-af',
+    `silencedetect=noise=${thresholdDb}dB:d=${Math.max(.02, minimumSilenceMs / 1000)}`, '-f', 'null', '-'], { windowsHide: true });
+  let output = '';
+  process.stderr.on('data', chunk => { output += chunk.toString(); });
+  const unchanged = () => resolve({ path: item.path, trimStartMs: 0, trimEndMs: item.durationMs, trimmed: false });
+  process.once('error', unchanged);
+  process.once('exit', code => {
+    if (code !== 0) { unchanged(); return; }
+    resolve({ path: item.path, ...parseSilenceBounds(output, item.durationMs, paddingMs) });
+  });
+});
+
+export const analyzeSilence = async (binary: string, items: Array<{ path: string; durationMs: number }>, thresholdDb: number,
+  paddingMs: number, minimumSilenceMs: number, onProgress?: (completed: number, total: number) => void) => {
+  let completed = 0;
+  return parallelMap(items, 4, async item => {
+    const result = await detectSilenceBounds(binary, item, thresholdDb, paddingMs, minimumSilenceMs);
+    completed += 1; onProgress?.(completed, items.length);
+    return result;
+  });
+};
+
 const parallelMap = async <T, R>(items: T[], concurrency: number, work: (item: T, index: number) => Promise<R>) => {
   const results = new Array<R>(items.length);
   let cursor = 0;

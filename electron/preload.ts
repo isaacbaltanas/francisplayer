@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('francisDesktop', {
   },
   importPaths: (request: unknown) => ipcRenderer.invoke('media:import-paths', request),
   generateWaveforms: (filePaths: string[]) => ipcRenderer.invoke('media:generate-waveforms', filePaths),
+  analyzeSilence: (request: unknown) => ipcRenderer.invoke('media:analyze-silence', request),
   preparePreviews: (filePaths: string[]) => ipcRenderer.invoke('media:prepare-previews', filePaths),
   onImportProgress: (callback: (progress: { jobId?: string; kind?: 'music' | 'voice'; completed: number; total: number }) => void) => {
     const listener = (_event: Electron.IpcRendererEvent, progress: { jobId?: string; kind?: 'music' | 'voice'; completed: number; total: number }) => callback(progress);

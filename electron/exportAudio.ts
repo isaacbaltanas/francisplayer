@@ -81,7 +81,8 @@ export const buildExportPlan = (payload: any) => {
     const normalization = payload.audioSettings.normalizeClips && asset.analysis ? 10 ** (adjustment / 20) : 1;
     const sourceBase = clip.kind === 'music' ? musicExpression(clip, payload) : number(dbToGain(payload.audioSettings.voiceGainDb)).toString();
     const base = `(${sourceBase})*${number(normalization)}`;
-    const chain = [`[${labels.length}:a]atrim=0:${number(clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
+    const sourceStart = (clip.sourceOffsetMs ?? 0) / 1000;
+    const chain = [`[${labels.length}:a]atrim=start=${number(sourceStart)}:end=${number(sourceStart + clip.durationMs / 1000)}`, 'asetpts=PTS-STARTPTS'];
     if (clip.fadeInMs) chain.push(`afade=t=in:st=0:d=${number(Math.min(clip.fadeInMs, clip.durationMs) / 1000)}`);
     if (clip.fadeOutMs) chain.push(`afade=t=out:st=${number(Math.max(0, clip.durationMs - clip.fadeOutMs) / 1000)}:d=${number(Math.min(clip.fadeOutMs, clip.durationMs) / 1000)}`);
     chain.push(`volume='(${base})*(${local})':eval=frame`, `adelay=${Math.round(clip.startMs)}|${Math.round(clip.startMs)}`);

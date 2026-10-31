@@ -38,6 +38,9 @@ export interface MediaAsset {
   fingerprint?: string;
   integrity?: 'unchecked' | 'valid' | 'warning';
   analysis?: AudioAnalysis;
+  sourceDurationMs?: number;
+  trimStartMs?: number;
+  trimEndMs?: number;
 }
 
 export interface AudioAnalysis {
@@ -127,6 +130,9 @@ export interface TimelineClip {
   generatedStartMs: number;
   durationMs: number;
   sourceDurationMs?: number;
+  sourceOffsetMs?: number;
+  originalSourceDurationMs?: number;
+  sourceTrimManuallyAdjusted?: boolean;
   color: string;
   truncated?: boolean;
   manuallyPositioned?: boolean;
@@ -154,6 +160,10 @@ export interface EditingPreferences {
   automationDisplayUnit: AutomationDisplayUnit;
   showAutomations: boolean;
   mixEditorMode: 'values' | 'graphic';
+  trimSilenceEnabled: boolean;
+  trimSilenceThresholdDb: number;
+  trimSilencePaddingMs: number;
+  trimSilenceMinimumMs: number;
 }
 
 export interface QuarantineItem {

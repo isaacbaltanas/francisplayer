@@ -94,7 +94,7 @@ const createPlayingElement = (graph: AudioGraph, asset: MediaAsset, clip: Timeli
   const start = async () => {
     if (cancelled) { settleReady(); return; }
     try {
-      const targetTime = Math.max(0, (positionMs - clip.startMs) / 1000);
+      const targetTime = Math.max(0, ((clip.sourceOffsetMs ?? 0) + positionMs - clip.startMs) / 1000);
       if (targetTime > .01) {
         await new Promise<void>(resolve => {
           let settled = false;
@@ -155,7 +155,7 @@ export const useTimelinePlayer = (arrangement: Arrangement | null, assets: Media
     const current = [...musicRef.current.values(), ...voicesRef.current.values()]
       .find(item => !item.element.paused && item.element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
     const clip = current ? clips.get(current.clipId) : undefined;
-    return current && clip ? clip.startMs + current.element.currentTime * 1000 : null;
+    return current && clip ? clip.startMs + current.element.currentTime * 1000 - (clip.sourceOffsetMs ?? 0) : null;
   }, [arrangement]);
 
   const syncElements = useCallback(async (nextPositionMs: number, generation = playbackGenerationRef.current) => {
