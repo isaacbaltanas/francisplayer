@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { ChangeEvent } from 'react';
 import { createArrangement, intervalForVoiceDuration, preserveManualVoicePositions, rebuildMissingMusic, shuffleWithSeed, voiceScheduleDuration } from './lib/arrangement';
@@ -15,6 +15,7 @@ import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
 import { normalizationAdjustmentDb } from './lib/audio';
+import { anchoredScrollLeft, zoomFromPinch } from './lib/timelineZoom';
 import appIconUrl from '../assets/icon.svg';
 import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
 
@@ -566,12 +567,42 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
   const [zoom, setZoom] = useState(1);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
+  const zoomAnchorRef = useRef<{ contentRatio: number; pointerOffset: number } | null>(null);
   const width = arrangement ? Math.max(100, arrangement.durationMs / 60_000 * 70 * zoom) : 100;
   const markerStepMs = arrangement && arrangement.durationMs <= 15 * 60_000 ? 60_000 : 5 * 60_000;
   const markers = arrangement ? Array.from({ length: Math.floor(arrangement.durationMs / markerStepMs) + 1 }, (_, index) => index * markerStepMs) : [];
   const timelineTabs = [...tabs.filter(tab => tab.kind === 'voice'), ...tabs.filter(tab => tab.kind === 'music')];
   const waveforms = new Map(assets.map(asset => [asset.id, asset.waveform]));
   const voiceOverlaps = arrangement ? overlappingClipIds(arrangement.voice) : new Set<string>();
+
+  useEffect(() => {
+    const scroll = timelineScrollRef.current;
+    if (!scroll) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey) return;
+      event.preventDefault();
+      const bounds = scroll.getBoundingClientRect();
+      const pointerOffset = Math.max(0, Math.min(scroll.clientWidth, event.clientX - bounds.left));
+      zoomAnchorRef.current = {
+        contentRatio: (scroll.scrollLeft + pointerOffset) / Math.max(1, scroll.scrollWidth),
+        pointerOffset
+      };
+      const deltaY = event.deltaMode === WheelEvent.DOM_DELTA_LINE ? event.deltaY * 16
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE ? event.deltaY * scroll.clientHeight : event.deltaY;
+      setZoom(current => zoomFromPinch(current, deltaY));
+    };
+    scroll.addEventListener('wheel', handleWheel, { passive: false });
+    return () => scroll.removeEventListener('wheel', handleWheel);
+  }, [arrangement]);
+
+  useLayoutEffect(() => {
+    const scroll = timelineScrollRef.current;
+    const anchor = zoomAnchorRef.current;
+    if (!scroll || !anchor) return;
+    scroll.scrollLeft = anchoredScrollLeft(anchor.contentRatio, anchor.pointerOffset, scroll.scrollWidth, scroll.clientWidth);
+    zoomAnchorRef.current = null;
+  }, [zoom]);
 
   return <section className="timeline-section">
     <header className="timeline-header">
@@ -584,7 +615,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
         <option value="smart">{t('snapSmart')}</option><option value="grid">{t('snapGrid')}</option>
         <option value="edges">{t('snapEdges')}</option><option value="original">{t('snapOriginal')}</option>
       </select>
-      <div className="zoom-control"><span>{t('zoom')}</span><button onClick={() => setZoom(Math.max(.5, zoom - .25))}>−</button>
+      <div className="zoom-control" title={t('trackpadZoomHint')}><span>{t('zoom')}</span><button onClick={() => setZoom(Math.max(.5, zoom - .25))}>−</button>
         <output>{Math.round(zoom * 100)}%</output><button onClick={() => setZoom(Math.min(4, zoom + .25))}>＋</button></div>
       </div>
     </header>
@@ -618,7 +649,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
             <span className="track-name">{tab.name}</span>{tab.localAutomationEnabled && <small> A</small>}</div>)}
           {automation?.visible && <div className="automation-track-label"><span className="track-dot automation-dot" />{t('automationTrack')}</div>}
         </div>
-        <div className="timeline-scroll">
+        <div className="timeline-scroll" ref={timelineScrollRef}>
           <div ref={canvasRef} className="timeline-canvas" style={{ width: `${width}%` }} onClick={(event) => {
             const bounds = event.currentTarget.getBoundingClientRect();
             onSeek((event.clientX - bounds.left) / bounds.width * arrangement.durationMs);
@@ -940,7 +971,7 @@ export default function App() {
   };
 
   const projectDocument = (): ProjectDocument => ({
-    name: projectName, version: '0.14.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.14.1', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

@@ -2,6 +2,18 @@
 
 Los cambios relevantes de Francis Player se documentan en este archivo. El proyecto utiliza Semantic Versioning.
 
+## [0.14.1] - 2026-10-31
+
+### Añadido
+
+- Zoom continuo de la línea de tiempo mediante el gesto de pellizcar en trackpads de macOS y Windows.
+- Ayuda contextual en el control de zoom para descubrir el gesto.
+
+### Cambiado
+
+- El zoom gestual mantiene bajo el cursor el mismo punto temporal y permite navegar entre 50 % y 400 %.
+- El desplazamiento con dos dedos queda contenido dentro de la línea de tiempo y no desplaza accidentalmente la ventana.
+
 ## [0.14.0] - 2026-10-31
 
 ### Añadido
