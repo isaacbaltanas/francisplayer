@@ -122,6 +122,33 @@ export interface AutomationState {
   assignments: AutomationAssignment[];
 }
 
+export interface AutomationPresetTemplate {
+  displayUnit: AutomationDisplayUnit;
+  visible: boolean;
+  groups: Array<Omit<AutomationGroup, 'id'>>;
+  assignments: Array<{
+    highGroup: number;
+    lowGroup: number;
+    fadeDownGroup: number;
+    fadeUpGroup: number;
+  }>;
+}
+
+export interface ConfigurationPreset {
+  format: 'francis-player-configuration-preset';
+  formatVersion: 1;
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  settings: ArrangementSettings;
+  audioSettings: AudioSettings;
+  editingPreferences: EditingPreferences;
+  musicInsertion: InsertionConfig;
+  voiceInsertion: InsertionConfig;
+  automation: AutomationPresetTemplate | null;
+}
+
 export interface TimelineClip {
   id: string;
   assetId?: string;

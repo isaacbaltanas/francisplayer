@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, protocol, shell, type MenuItemConstructorOptions } from 'electron';
 import path from 'node:path';
+import fs from 'node:fs';
 import type { ChildProcess } from 'node:child_process';
 import { Worker } from 'node:worker_threads';
 import ffmpegStatic from 'ffmpeg-static';
@@ -144,6 +145,25 @@ ipcMain.handle('project:confirm-unsaved', async (_event, language: string) => {
     defaultId: 0, cancelId: 2, noLink: true
   });
   return (['save', 'discard', 'cancel'] as const)[result.response] ?? 'cancel';
+});
+ipcMain.handle('preset:export', async (_event, preset: any) => {
+  const result = await dialog.showSaveDialog({
+    title: 'Exportar preset de Francis Player',
+    defaultPath: `${safeProjectName(preset?.name || 'Configuración')}.francispreset`,
+    filters: [{ name: 'Francis Player Preset', extensions: ['francispreset'] }]
+  });
+  if (result.canceled || !result.filePath) return null;
+  const filePath = result.filePath.endsWith('.francispreset') ? result.filePath : `${result.filePath}.francispreset`;
+  await fs.promises.writeFile(filePath, `${JSON.stringify(preset, null, 2)}\n`, 'utf8');
+  return filePath;
+});
+ipcMain.handle('preset:import', async () => {
+  const result = await dialog.showOpenDialog({
+    title: 'Importar preset de Francis Player', properties: ['openFile'],
+    filters: [{ name: 'Francis Player Preset', extensions: ['francispreset', 'json'] }]
+  });
+  if (result.canceled || !result.filePaths[0]) return null;
+  return JSON.parse(await fs.promises.readFile(result.filePaths[0], 'utf8'));
 });
 ipcMain.handle('media:import-paths', async (event, request: any) => {
   if (!ffmpegStatic) throw new Error('FFmpeg binary is unavailable');

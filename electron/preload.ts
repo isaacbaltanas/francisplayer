@@ -18,6 +18,8 @@ contextBridge.exposeInMainWorld('francisDesktop', {
   saveProject: (payload: unknown, projectPath?: string) => ipcRenderer.invoke('project:save', payload, projectPath),
   openProject: (projectPath?: string) => ipcRenderer.invoke('project:open', projectPath),
   confirmUnsavedChanges: (language: string) => ipcRenderer.invoke('project:confirm-unsaved', language),
+  exportPreset: (preset: unknown) => ipcRenderer.invoke('preset:export', preset),
+  importPreset: () => ipcRenderer.invoke('preset:import'),
   onOpenProject: (callback: (projectPath: string) => void) => {
     openCallbacks.add(callback);
     if (pendingProjectPath) { const next = pendingProjectPath; pendingProjectPath = null; queueMicrotask(() => callback(next)); }

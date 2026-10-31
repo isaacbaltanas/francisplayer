@@ -16,11 +16,12 @@ import { snapClipStart } from './lib/snapping';
 import { createInsertionSequence } from './lib/insertion';
 import { overlappingClipIds } from './lib/overlaps';
 import { duplicateReferencesForTab, filterNewFilesForTab } from './lib/importDedup';
+import { createConfigurationPreset, instantiateAutomationTemplate, isConfigurationPreset } from './lib/presets';
 import { dbToLinear, normalizationAdjustmentDb } from './lib/audio';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, type RealtimeAudioGraph } from './lib/realtimeAudioGraph';
 import { anchoredScrollLeft, fitTimelineZoom, zoomFromPinch } from './lib/timelineZoom';
 import appIconUrl from '../assets/icon.svg';
-import type { Arrangement, ArrangementSettings, AudioSettings, AutomationState, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationPresetTemplate, AutomationState, ConfigurationPreset, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -82,6 +83,18 @@ const initialTabs: LibraryTab[] = [
 ];
 const defaultMusicInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
 const defaultVoiceInsertion: InsertionConfig = { mode: 'balanced', customPattern: '1, 2, 1, 3' };
+const presetStorageKey = 'francis-configuration-presets';
+const defaultPresetStorageKey = 'francis-default-preset-id';
+const readStoredPresets = (): ConfigurationPreset[] => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(presetStorageKey) ?? '[]');
+    return Array.isArray(parsed) ? parsed.filter(isConfigurationPreset) : [];
+  } catch { return []; }
+};
+const readDefaultPreset = () => {
+  const id = localStorage.getItem(defaultPresetStorageKey);
+  return readStoredPresets().find(preset => preset.id === id) ?? null;
+};
 
 function InfoHint({ text }: { text: string }) {
   const id = useId();
@@ -322,13 +335,24 @@ interface SettingsPanelProps {
   previewMode: 'dry' | 'processed';
   onPreviewEffectsEnabledChange: (enabled: boolean) => void;
   onPreviewModeChange: (mode: 'dry' | 'processed') => void;
+  presets: ConfigurationPreset[];
+  defaultPresetId: string | null;
+  onSavePreset: (name: string) => void;
+  onLoadPreset: (preset: ConfigurationPreset) => void;
+  onRenamePreset: (preset: ConfigurationPreset) => void;
+  onDeletePreset: (preset: ConfigurationPreset) => void;
+  onDefaultPresetChange: (id: string | null) => void;
+  onExportPreset: (preset: ConfigurationPreset) => void;
+  onImportPreset: () => void;
 }
 
 function SettingsPanel({ settings, audioSettings, automation, editingPreferences, voiceAssets, onChange, onAudioChange, onAutomationChange,
   onEditingPreferencesChange, trimmingVoices, onTrimVoices, onRestoreVoiceTrims, collapsed, onToggleCollapsed,
-  previewEffectsEnabled, previewMode, onPreviewEffectsEnabledChange, onPreviewModeChange }: SettingsPanelProps) {
+  previewEffectsEnabled, previewMode, onPreviewEffectsEnabledChange, onPreviewModeChange, presets, defaultPresetId,
+  onSavePreset, onLoadPreset, onRenamePreset, onDeletePreset, onDefaultPresetChange, onExportPreset, onImportPreset }: SettingsPanelProps) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing'>('arrangement');
+  const [tab, setTab] = useState<'arrangement' | 'audio' | 'automation' | 'editing' | 'presets'>('arrangement');
+  const [presetName, setPresetName] = useState('');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
   const intervalSeconds = Math.round(settings.voiceIntervalMs / 1000);
   const targetSliderMax = Math.max(360, Math.ceil(voiceScheduleDuration(voiceAssets, 300_000, settings.allowVoiceOverlap) / 60_000));
@@ -352,7 +376,7 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       </div>
 
     <div className="settings-tabs">
-      {(['arrangement', 'audio', 'automation', 'editing'] as const).map(item => <button key={item}
+      {(['arrangement', 'audio', 'automation', 'editing', 'presets'] as const).map(item => <button key={item}
         className={tab === item ? 'active' : ''} title={t(`settingsTab_${item}Help`)} onClick={() => setTab(item)}>{t(`settingsTab_${item}`)}</button>)}
     </div>
 
@@ -538,6 +562,34 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
       <div className="shortcut-card full"><kbd>⇧ Shift</kbd><p>{t('musicRippleHint')}</p></div>
       <p className="settings-help">{t('integrityHelp')}</p>
       <p className="settings-help">{t('snapControlHint')}</p>
+    </div>}
+    {tab === 'presets' && <div className="settings-tab-content preset-settings">
+      <div className="preset-intro"><h3><FieldLabel help={t('presetsHelp')}>{t('configurationPresets')}</FieldLabel></h3>
+        <p>{t('presetsDescription')}</p></div>
+      <div className="preset-create">
+        <label className="field"><FieldLabel help={t('presetNameHelp')}>{t('presetName')}</FieldLabel>
+          <input value={presetName} maxLength={80} placeholder={t('presetNamePlaceholder')}
+            onChange={(event) => setPresetName(event.target.value)} onKeyDown={(event) => {
+              if (event.key === 'Enter' && presetName.trim()) { onSavePreset(presetName); setPresetName(''); }
+            }} /></label>
+        <button disabled={!presetName.trim()} onClick={() => { onSavePreset(presetName); setPresetName(''); }}>{t('savePreset')}</button>
+      </div>
+      <div className="preset-toolbar"><button onClick={onImportPreset}>{t('importPreset')}</button>
+        <span>{t('presetCount', { count: presets.length })}</span></div>
+      <div className="preset-list">
+        {!presets.length && <div className="preset-empty">{t('noPresets')}</div>}
+        {presets.map(preset => <article className={defaultPresetId === preset.id ? 'default' : ''} key={preset.id}>
+          <div><strong>{preset.name}</strong><small>{new Date(preset.updatedAt).toLocaleString()}</small></div>
+          <label className="preset-default"><input type="radio" name="default-preset" checked={defaultPresetId === preset.id}
+            onChange={() => onDefaultPresetChange(preset.id)} /><span>{t('defaultPreset')}</span></label>
+          <div className="preset-actions"><button onClick={() => onLoadPreset(preset)}>{t('loadPreset')}</button>
+            <button onClick={() => onRenamePreset(preset)}>{t('renamePreset')}</button>
+            <button onClick={() => onExportPreset(preset)}>{t('exportPreset')}</button>
+            <button className="danger" onClick={() => onDeletePreset(preset)}>{t('deletePreset')}</button></div>
+        </article>)}
+      </div>
+      {defaultPresetId && <button className="clear-default-preset" onClick={() => onDefaultPresetChange(null)}>{t('clearDefaultPreset')}</button>}
+      <p className="settings-help">{t('presetScopeHelp')}</p>
     </div>}
     </div>
     <button className="settings-collapsed-rail" onClick={onToggleCollapsed} aria-expanded={!collapsed}
@@ -958,18 +1010,20 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
 
 export default function App() {
   const { t, i18n } = useTranslation();
+  const [presets, setPresets] = useState<ConfigurationPreset[]>(readStoredPresets);
+  const [defaultPresetId, setDefaultPresetId] = useState<string | null>(() => localStorage.getItem(defaultPresetStorageKey));
   const [music, setMusic] = useState<MediaAsset[]>([]);
   const [voices, setVoices] = useState<MediaAsset[]>([]);
   const [libraryTabs, setLibraryTabs] = useState<LibraryTab[]>(initialTabs);
   const [activeMusicTabId, setActiveMusicTabId] = useState('music-1');
   const [activeVoiceTabId, setActiveVoiceTabId] = useState('voice-1');
-  const [musicInsertion, setMusicInsertion] = useState<InsertionConfig>(defaultMusicInsertion);
-  const [voiceInsertion, setVoiceInsertion] = useState<InsertionConfig>(defaultVoiceInsertion);
-  const [settings, setSettings] = useState(defaultSettings);
-  const [audioSettings, setAudioSettings] = useState(defaultAudioSettings);
+  const [musicInsertion, setMusicInsertion] = useState<InsertionConfig>(() => readDefaultPreset()?.musicInsertion ?? defaultMusicInsertion);
+  const [voiceInsertion, setVoiceInsertion] = useState<InsertionConfig>(() => readDefaultPreset()?.voiceInsertion ?? defaultVoiceInsertion);
+  const [settings, setSettings] = useState(() => readDefaultPreset()?.settings ?? defaultSettings);
+  const [audioSettings, setAudioSettings] = useState(() => readDefaultPreset()?.audioSettings ?? defaultAudioSettings);
   const [arrangement, setArrangement] = useState<Arrangement | null>(null);
   const [automation, setAutomation] = useState<AutomationState | null>(null);
-  const [editingPreferences, setEditingPreferences] = useState(defaultEditingPreferences);
+  const [editingPreferences, setEditingPreferences] = useState(() => readDefaultPreset()?.editingPreferences ?? defaultEditingPreferences);
   const [activePreview, setActivePreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [projectPath, setProjectPath] = useState<string | undefined>();
@@ -1007,6 +1061,7 @@ export default function App() {
   const historyReadyRef = useRef(false);
   const applyingHistoryRef = useRef(false);
   const savedSignatureRef = useRef('');
+  const automationPresetRef = useRef<AutomationPresetTemplate | null>(readDefaultPreset()?.automation ?? null);
   const allAssets = useMemo(() => [...music, ...voices], [music, voices]);
   const musicSequence = useMemo(() => createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
     activeMusicTabId, musicInsertion, settings.seed), [libraryTabs, music, activeMusicTabId, musicInsertion, settings.seed]);
@@ -1042,6 +1097,15 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('francis-settings-collapsed', String(settingsCollapsed));
   }, [settingsCollapsed]);
+
+  useEffect(() => {
+    localStorage.setItem(presetStorageKey, JSON.stringify(presets));
+  }, [presets]);
+
+  useEffect(() => {
+    if (defaultPresetId) localStorage.setItem(defaultPresetStorageKey, defaultPresetId);
+    else localStorage.removeItem(defaultPresetStorageKey);
+  }, [defaultPresetId]);
 
   useEffect(() => {
     localStorage.setItem('francis-preview-effects', String(previewEffectsEnabled));
@@ -1297,9 +1361,10 @@ export default function App() {
     const next = createArrangement(musicSequence, voiceSequence, nextSettings);
     const showAutomationTrack = next.voice.length > 0 || editingPreferences.showAutomations;
     setArrangement(next);
-    setAutomation({ ...createAutomationState(next, audioSettings),
+    const baseAutomation = { ...createAutomationState(next, audioSettings),
       displayUnit: editingPreferences.automationDisplayUnit,
-      visible: showAutomationTrack });
+      visible: showAutomationTrack };
+    setAutomation(instantiateAutomationTemplate(automationPresetRef.current, next, baseAutomation));
     if (showAutomationTrack !== editingPreferences.showAutomations) {
       setEditingPreferences(current => ({ ...current, showAutomations: showAutomationTrack }));
     }
@@ -1536,7 +1601,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.31.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.32.0', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1566,6 +1631,7 @@ export default function App() {
     setLibraryTabs(snapshot.libraryTabs); setActiveMusicTabId(snapshot.activeMusicTabId); setActiveVoiceTabId(snapshot.activeVoiceTabId);
     setMusicInsertion(snapshot.musicInsertion); setVoiceInsertion(snapshot.voiceInsertion);
     setArrangement(snapshot.arrangement); setAutomation(snapshot.automation);
+    automationPresetRef.current = null;
     setQuarantine(snapshot.quarantine); setImportLogs(snapshot.importLogs);
   };
 
@@ -1641,6 +1707,7 @@ export default function App() {
       setLibraryTabs(openedSnapshot.libraryTabs); setActiveMusicTabId(openedSnapshot.activeMusicTabId); setActiveVoiceTabId(openedSnapshot.activeVoiceTabId);
       setMusicInsertion(openedSnapshot.musicInsertion); setVoiceInsertion(openedSnapshot.voiceInsertion);
       setArrangement(openedSnapshot.arrangement); setAutomation(openedSnapshot.automation);
+      automationPresetRef.current = null;
       setQuarantine(openedSnapshot.quarantine); setImportLogs(openedSnapshot.importLogs);
       setProjectPath(opened.projectPath); setProjectName(project.name);
       const restoredEntries = project.history?.entries?.length
@@ -1675,14 +1742,19 @@ export default function App() {
   };
 
   const clearProject = () => {
+    const defaultPreset = presets.find(preset => preset.id === defaultPresetId) ?? null;
     waveformHydrationGeneration.current += 1;
     player.reset(); stopPreview();
     assetsRef.current.filter(asset => asset.previewUrl.startsWith('blob:')).forEach(asset => URL.revokeObjectURL(asset.previewUrl));
     setMusic([]); setVoices([]); setLibraryTabs(initialTabs.map(tab => ({ ...tab, automationPoints: [] })));
     setActiveMusicTabId('music-1'); setActiveVoiceTabId('voice-1'); setArrangement(null); setAutomation(null);
     setQuarantine([]); setImportLogs([]); setProjectPath(undefined); setProjectName(t('untitledProject'));
-    setSettings(defaultSettings); setAudioSettings(defaultAudioSettings); setEditingPreferences(defaultEditingPreferences);
-    setMusicInsertion(defaultMusicInsertion); setVoiceInsertion(defaultVoiceInsertion);
+    setSettings(defaultPreset?.settings ?? defaultSettings);
+    setAudioSettings(defaultPreset?.audioSettings ?? defaultAudioSettings);
+    setEditingPreferences(defaultPreset?.editingPreferences ?? defaultEditingPreferences);
+    setMusicInsertion(defaultPreset?.musicInsertion ?? defaultMusicInsertion);
+    setVoiceInsertion(defaultPreset?.voiceInsertion ?? defaultVoiceInsertion);
+    automationPresetRef.current = defaultPreset?.automation ?? null;
     historyRef.current = []; historyIndexRef.current = -1; historyReadyRef.current = false;
     applyingHistoryRef.current = false; savedSignatureRef.current = ''; setIsDirty(false);
     setHistoryRevision(value => value + 1);
@@ -1690,6 +1762,54 @@ export default function App() {
 
   const newProject = async () => {
     if (await confirmCanReplaceProject()) clearProject();
+  };
+
+  const loadConfigurationPreset = (preset: ConfigurationPreset) => {
+    setSettings(structuredClone(preset.settings));
+    setAudioSettings(structuredClone(preset.audioSettings));
+    setEditingPreferences(structuredClone(preset.editingPreferences));
+    setMusicInsertion(structuredClone(preset.musicInsertion));
+    setVoiceInsertion(structuredClone(preset.voiceInsertion));
+    automationPresetRef.current = structuredClone(preset.automation);
+    if (arrangement) {
+      const base = createAutomationState(arrangement, preset.audioSettings);
+      setAutomation(instantiateAutomationTemplate(preset.automation, arrangement, base));
+    }
+  };
+
+  const saveConfigurationPreset = (name: string) => {
+    const preset = createConfigurationPreset(name, {
+      settings, audioSettings, editingPreferences, musicInsertion, voiceInsertion, automation
+    });
+    setPresets(current => [...current, preset]);
+  };
+
+  const renameConfigurationPreset = (preset: ConfigurationPreset) => {
+    const name = window.prompt(t('renamePresetPrompt'), preset.name)?.trim();
+    if (!name) return;
+    setPresets(current => current.map(item => item.id === preset.id
+      ? { ...item, name, updatedAt: new Date().toISOString() } : item));
+  };
+
+  const deleteConfigurationPreset = (preset: ConfigurationPreset) => {
+    if (!window.confirm(t('deletePresetConfirm', { name: preset.name }))) return;
+    setPresets(current => current.filter(item => item.id !== preset.id));
+    if (defaultPresetId === preset.id) setDefaultPresetId(null);
+  };
+
+  const exportConfigurationPreset = async (preset: ConfigurationPreset) => {
+    try { await window.francisDesktop?.exportPreset(preset); }
+    catch { setError(t('presetExportError')); }
+  };
+
+  const importConfigurationPreset = async () => {
+    try {
+      const imported = await window.francisDesktop?.importPreset();
+      if (!imported) return;
+      if (!isConfigurationPreset(imported)) throw new Error('Invalid preset');
+      const now = new Date().toISOString();
+      setPresets(current => [...current, { ...structuredClone(imported), id: crypto.randomUUID(), createdAt: now, updatedAt: now }]);
+    } catch { setError(t('presetImportError')); }
   };
 
   const exportAudio = async (exportSettings: ExportSettings) => {
@@ -1836,7 +1956,13 @@ export default function App() {
             setPreviewEffectsEnabled(enabled);
             if (enabled) setPreviewMode('processed');
           }}
-          onPreviewModeChange={setPreviewMode} />
+          onPreviewModeChange={setPreviewMode}
+          presets={presets} defaultPresetId={defaultPresetId}
+          onSavePreset={saveConfigurationPreset} onLoadPreset={loadConfigurationPreset}
+          onRenamePreset={renameConfigurationPreset} onDeletePreset={deleteConfigurationPreset}
+          onDefaultPresetChange={setDefaultPresetId}
+          onExportPreset={(preset) => void exportConfigurationPreset(preset)}
+          onImportPreset={() => void importConfigurationPreset()} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
         musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
