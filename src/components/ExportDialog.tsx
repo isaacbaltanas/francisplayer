@@ -87,9 +87,18 @@ export function ExportDialog({ open, canExport, silenceDetection, preflightSilen
         {silenceDetection.enabled && <section className="preexport-silence-check">
           <header><strong>{preflightSilences.length ? `! ${t('silenceWarnings', { count: preflightSilences.length })}` : `✓ ${t('noTimelineSilences')}`}</strong>
             <span>{silenceDetection.thresholdDb} dBFS · {(silenceDetection.minimumMs / 1000).toFixed(1)} s</span></header>
-          {preflightSilences.length > 0 && <><div className="silence-mini-timeline">{preflightSilences.map((issue, index) => <button key={`${issue.startMs}-${index}`}
-            style={{ left: `${Math.min(100, issue.startMs / Math.max(1, durationMs) * 100)}%` }}
-            title={`${clock(issue.startMs)} · ${clock(issue.durationMs)}`} onClick={() => onSeek?.(issue.startMs)} />)}</div>
+          <div className="orange-silence-timeline" aria-label={t('silenceTimeline')}>
+            <span className="timeline-timecode timeline-timecode-start">{clock(0)}</span>
+            <i aria-hidden="true" />
+            {preflightSilences.map((issue, index) => {
+              const position = Math.min(100, Math.max(0, (issue.startMs + issue.durationMs / 2) / Math.max(1, durationMs) * 100));
+              return <button key={`${issue.startMs}-${index}`} className={index % 2 ? 'label-below' : 'label-above'}
+                style={{ left: `${position}%` }} title={`${clock(issue.startMs)}–${clock(issue.endMs)} · ${clock(issue.durationMs)}`}
+                onClick={() => onSeek?.(issue.startMs)}><b /><span>{clock(issue.startMs)}</span></button>;
+            })}
+            <span className="timeline-timecode timeline-timecode-end">{clock(durationMs)}</span>
+          </div>
+          {preflightSilences.length > 0 && <>
           <div className="silence-list">{preflightSilences.map((issue, index) => <button key={`${issue.endMs}-${index}`} onClick={() => onSeek?.(issue.startMs)}>
             <time>{clock(issue.startMs)}</time><b>{(issue.durationMs / 1000).toFixed(1)} s</b>
             <span>{issue.beforeClip && issue.afterClip ? `${issue.beforeClip} → ${issue.afterClip}` : issue.beforeClip || issue.afterClip || t('unknownRegion')}</span>
