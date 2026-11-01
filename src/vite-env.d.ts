@@ -5,6 +5,7 @@ interface Window {
     platform: string;
     getPathForFile: (file: File) => string;
     saveProject: (payload: unknown, projectPath?: string) => Promise<string | null>;
+    onProjectSaveProgress: (callback: (progress: { completed: number; total: number }) => void) => () => void;
     openProject: (projectPath?: string) => Promise<{ projectPath: string; project: any } | null>;
     confirmUnsavedChanges: (language: string) => Promise<'save' | 'discard' | 'cancel'>;
     exportPreset: (preset: import('./types').ConfigurationPreset) => Promise<string | null>;

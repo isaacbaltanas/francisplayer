@@ -6,7 +6,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { buildExportPlan, codecArguments, parseProgress } from './exportAudio.js';
 import { parseLoudnessReport } from './importAudio.js';
 
-type Progress = { phase: string; percent: number; detail?: string };
+type Progress = { phase: string; percent: number; detail?: string; etaMs?: number };
 type ProcessSetter = (process: ChildProcess | null) => void;
 
 const fixed = (value: number) => Number(value.toFixed(3));
@@ -186,10 +186,16 @@ export const runVerifiedExport = async ({ binary, payload, options, outputPath, 
   binary: string; payload: any; options: any; outputPath: string;
   notify: (progress: Progress) => void; setProcess: ProcessSetter;
 }) => {
+  const exportStartedAt = Date.now();
+  const emit = (progress: Progress) => {
+    const elapsedMs = Date.now() - exportStartedAt;
+    const measurable = elapsedMs >= 2_000 && progress.percent >= 2 && progress.percent < 100;
+    notify({ ...progress, etaMs: measurable ? Math.max(0, Math.round(elapsedMs / progress.percent * (100 - progress.percent))) : undefined });
+  };
   const plan = buildExportPlan({ ...payload, exportOptions: options });
   const expectedDurationMs = payload.arrangement.durationMs;
-  notify({ phase: 'preflight', percent: 1 });
-  await assertSources(payload, plan.manifest, notify);
+  emit({ phase: 'preflight', percent: 1 });
+  await assertSources(payload, plan.manifest, emit);
   ensureSpace(path.dirname(outputPath), expectedDurationMs, options.sampleRate, options.channels);
 
   const temporaryDirectory = fs.mkdtempSync(path.join(path.dirname(outputPath), '.francis-render-'));
@@ -199,18 +205,18 @@ export const runVerifiedExport = async ({ binary, payload, options, outputPath, 
   const filterPath = path.join(temporaryDirectory, 'mix.ffmpeg');
   fs.writeFileSync(filterPath, plan.filterScript);
   try {
-    notify({ phase: 'rendering', percent: 10, detail: 'PCM 32-bit float' });
+    emit({ phase: 'rendering', percent: 10, detail: 'PCM 32-bit float' });
     let renderOutput = '';
     await run(binary, [...plan.inputs, '-filter_complex_script', filterPath, '-map', '[out]', '-ac', String(options.channels),
       '-ar', String(options.sampleRate), '-c:a', 'pcm_f32le', '-f', 'w64', '-y', masterPath, '-progress', 'pipe:2', '-nostats'], setProcess, chunk => {
       renderOutput += chunk;
       const progress = parseProgress(renderOutput, expectedDurationMs);
-      if (progress !== null) notify({ phase: 'rendering', percent: 10 + progress * .45 });
+      if (progress !== null) emit({ phase: 'rendering', percent: 10 + progress * .45 });
       renderOutput = renderOutput.slice(-2000);
     });
 
     const normalizationFilter = options.normalize ? await loudnormAnalysis(binary, masterPath, setProcess) : undefined;
-    notify({ phase: 'encoding', percent: 56 });
+    emit({ phase: 'encoding', percent: 56 });
     let encodeOutput = '';
     const encodeArgs = ['-hide_banner', '-i', masterPath, '-map', '0:a:0'];
     if (normalizationFilter) encodeArgs.push('-af', normalizationFilter);
@@ -219,16 +225,16 @@ export const runVerifiedExport = async ({ binary, payload, options, outputPath, 
     await run(binary, encodeArgs, setProcess, chunk => {
       encodeOutput += chunk;
       const progress = parseProgress(encodeOutput, expectedDurationMs);
-      if (progress !== null) notify({ phase: 'encoding', percent: 56 + progress * .19 });
+      if (progress !== null) emit({ phase: 'encoding', percent: 56 + progress * .19 });
       encodeOutput = encodeOutput.slice(-2000);
     });
 
-    notify({ phase: 'verifying', percent: 76, detail: 'Full decode' });
+    emit({ phase: 'verifying', percent: 76, detail: 'Full decode' });
     const analysis = options.verifyOutput
       ? await analyzeRenderedFile(binary, partialPath, options, expectedDurationMs, setProcess)
       : { durationMs: expectedDurationMs, loudness: undefined, silenceIssues: [], nan: 0, infinity: 0,
         sampleCount: Math.round(expectedDurationMs / 1000 * options.sampleRate), actualSampleRate: options.sampleRate, actualChannels: options.channels };
-    notify({ phase: 'verifying', percent: 86, detail: 'SHA-256' });
+    emit({ phase: 'verifying', percent: 86, detail: 'SHA-256' });
     const fileSha256 = await sha256File(partialPath);
     const decodedPcmSha256 = await decodedPcmHash(binary, partialPath, options.channels, options.sampleRate, setProcess);
     const masterPcmSha256 = await decodedPcmHash(binary, masterPath, options.channels, options.sampleRate, setProcess, normalizationFilter);
@@ -281,13 +287,13 @@ export const runVerifiedExport = async ({ binary, payload, options, outputPath, 
       rmsDb: analysis.loudness?.rmsDb, differenceRmsDb: comparison.rmsDb, differencePeakDb: comparison.peakDb,
       silenceIssues: enrichedSilences, checks
     };
-    notify({ phase: 'publishing', percent: 98 });
+    emit({ phase: 'publishing', percent: 98 });
     replaceVerifiedFile(partialPath, outputPath);
     const reportPath = `${outputPath}.francis-report.json`;
     const reportPartialPath = `${reportPath}.partial`;
     fs.writeFileSync(reportPartialPath, JSON.stringify(report, null, 2));
     replaceVerifiedFile(reportPartialPath, reportPath);
-    notify({ phase: 'complete', percent: 100 });
+    emit({ phase: 'complete', percent: 100 });
     return { outputPath, reportPath, report };
   } finally {
     setProcess(null);

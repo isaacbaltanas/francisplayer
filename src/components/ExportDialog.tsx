@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { ExportProgress, ExportResult, ExportSettings } from '../types';
+import type { ExportProgress, ExportResult, ExportSettings, ExportSilenceIssue } from '../types';
 
 const defaults: ExportSettings = {
   format: 'wav', channels: 2, sampleRate: 44100, bitDepth: 16,
@@ -16,9 +16,20 @@ const clock = (milliseconds: number) => {
   return `${hours ? `${hours}:` : ''}${String(minutes).padStart(2, '0')}:${seconds.toFixed(3).padStart(6, '0')}`;
 };
 
-export function ExportDialog({ open, canExport, onClose, onExport, onSeek }: {
+const eta = (milliseconds: number) => {
+  const seconds = Math.max(0, Math.ceil(milliseconds / 1000));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor(seconds % 3600 / 60);
+  const remainder = seconds % 60;
+  return hours ? `${hours} h ${minutes} min` : minutes ? `${minutes} min ${remainder} s` : `${remainder} s`;
+};
+
+export function ExportDialog({ open, canExport, silenceDetection, preflightSilences, durationMs, onClose, onExport, onSeek }: {
   open: boolean;
   canExport: boolean;
+  silenceDetection: { enabled: boolean; thresholdDb: number; minimumMs: number };
+  preflightSilences: ExportSilenceIssue[];
+  durationMs: number;
   onClose: () => void;
   onExport: (settings: ExportSettings) => Promise<ExportResult | null>;
   onSeek?: (positionMs: number) => void;
@@ -33,6 +44,11 @@ export function ExportDialog({ open, canExport, onClose, onExport, onSeek }: {
   useEffect(() => window.francisDesktop?.onExportProgress(next => {
     setProgress(typeof next === 'number' ? { phase: 'rendering', percent: next } : next);
   }), []);
+  useEffect(() => {
+    if (!open) return;
+    setSettings(current => ({ ...current, detectSilence: silenceDetection.enabled,
+      silenceThresholdDb: silenceDetection.thresholdDb, silenceMinimumMs: silenceDetection.minimumMs }));
+  }, [open, silenceDetection.enabled, silenceDetection.thresholdDb, silenceDetection.minimumMs]);
   if (!open) return null;
   const lossy = ['mp3', 'aac', 'ogg', 'opus'].includes(settings.format);
   const patch = (next: Partial<ExportSettings>) => setSettings(current => ({ ...current, ...next }));
@@ -66,19 +82,23 @@ export function ExportDialog({ open, canExport, onClose, onExport, onSeek }: {
             <span>{t('normalizeLoudness')}</span></label>
           <label className="export-check"><input type="checkbox" checked={settings.verifyOutput} onChange={event => patch({ verifyOutput: event.target.checked })} />
             <span>{t('verifyExport')}</span></label>
-          <label className="export-check"><input type="checkbox" checked={settings.detectSilence} onChange={event => patch({ detectSilence: event.target.checked })} />
-            <span>{t('detectExtendedSilence')}</span></label>
-          {settings.detectSilence && <>
-            <label><span>{t('exportSilenceThreshold')}</span><div className="export-number"><input type="number" min="-80" max="-10" step="1" value={settings.silenceThresholdDb}
-              onChange={event => patch({ silenceThresholdDb: Math.max(-80, Math.min(-10, Number(event.target.value))) })} /><em>dBFS</em></div></label>
-            <label><span>{t('exportSilenceDuration')}</span><div className="export-number"><input type="number" min="0.1" max="600" step="0.5" value={settings.silenceMinimumMs / 1000}
-              onChange={event => patch({ silenceMinimumMs: Math.max(100, Number(event.target.value) * 1000) })} /><em>s</em></div></label>
-          </>}
         </div>
         <div className="export-summary">{settings.format.toUpperCase()} · {settings.channels === 2 ? t('stereo') : t('mono')} · {settings.sampleRate / 1000} kHz · {lossy ? `${settings.bitrate} kbps` : `${settings.bitDepth} bit`}</div>
+        {silenceDetection.enabled && <section className="preexport-silence-check">
+          <header><strong>{preflightSilences.length ? `! ${t('silenceWarnings', { count: preflightSilences.length })}` : `✓ ${t('noTimelineSilences')}`}</strong>
+            <span>{silenceDetection.thresholdDb} dBFS · {(silenceDetection.minimumMs / 1000).toFixed(1)} s</span></header>
+          {preflightSilences.length > 0 && <><div className="silence-mini-timeline">{preflightSilences.map((issue, index) => <button key={`${issue.startMs}-${index}`}
+            style={{ left: `${Math.min(100, issue.startMs / Math.max(1, durationMs) * 100)}%` }}
+            title={`${clock(issue.startMs)} · ${clock(issue.durationMs)}`} onClick={() => onSeek?.(issue.startMs)} />)}</div>
+          <div className="silence-list">{preflightSilences.map((issue, index) => <button key={`${issue.endMs}-${index}`} onClick={() => onSeek?.(issue.startMs)}>
+            <time>{clock(issue.startMs)}</time><b>{(issue.durationMs / 1000).toFixed(1)} s</b>
+            <span>{issue.beforeClip && issue.afterClip ? `${issue.beforeClip} → ${issue.afterClip}` : issue.beforeClip || issue.afterClip || t('unknownRegion')}</span>
+          </button>)}</div></>}
+        </section>}
         {(exporting || progress.percent > 0) && <div className="export-progress-block">
           <div className="export-progress"><i style={{ width: `${progress.percent}%` }} /><span>{Math.round(progress.percent)}%</span></div>
-          <small>{t(`exportPhase_${progress.phase}`)}{progress.detail ? ` · ${progress.detail}` : ''}</small>
+          <small>{t(`exportPhase_${progress.phase}`)}{progress.detail ? ` · ${progress.detail}` : ''}
+            {progress.etaMs !== undefined && progress.phase !== 'complete' ? ` · ${t('exportEta', { time: eta(progress.etaMs) })}` : ''}</small>
         </div>}
         {report && <section className={`export-report ${report.verified ? 'verified' : 'warning'}`}>
           <header><strong>{report.verified ? `✓ ${t('verifiedExport')}` : `! ${t('exportNeedsReview')}`}</strong>

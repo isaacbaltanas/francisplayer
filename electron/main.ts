@@ -57,7 +57,7 @@ const installApplicationMenu = () => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 };
 
-const saveProject = async (payload: any, requestedPath?: string) => {
+const saveProject = async (payload: any, requestedPath?: string, notify?: (completed: number, total: number) => void) => {
   let projectPath = requestedPath;
   if (!projectPath) {
     const result = await dialog.showSaveDialog({
@@ -71,7 +71,11 @@ const saveProject = async (payload: any, requestedPath?: string) => {
   await new Promise<void>((resolve, reject) => {
     const worker = new Worker(path.join(__dirname, 'projectArchiveWorker.js'));
     const finish = () => { void worker.terminate(); };
-    worker.once('message', (result: { ok: boolean; error?: string }) => {
+    worker.on('message', (result: { type?: string; ok?: boolean; error?: string; completed?: number; total?: number }) => {
+      if (result.type === 'progress') {
+        notify?.(result.completed ?? 0, result.total ?? 1);
+        return;
+      }
       finish();
       if (result.ok) resolve(); else reject(new Error(result.error || 'Project save failed'));
     });
@@ -132,7 +136,8 @@ const createWindow = async () => {
   }
 };
 
-ipcMain.handle('project:save', (_event, payload, requestedPath?: string) => saveProject(payload, requestedPath));
+ipcMain.handle('project:save', (event, payload, requestedPath?: string) => saveProject(payload, requestedPath,
+  (completed, total) => event.sender.send('project:save-progress', { completed, total })));
 ipcMain.handle('project:open', (_event, requestedPath?: string) => openProject(requestedPath));
 ipcMain.handle('project:confirm-unsaved', async (_event, language: string) => {
   const english = language?.toLowerCase().startsWith('en');

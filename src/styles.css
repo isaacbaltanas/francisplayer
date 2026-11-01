@@ -298,6 +298,8 @@ main.settings-collapsed { --settings-width: 48px; }
 .track-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; }.voice-dot { background: #de6ea8; }.music-dot { background: #4f8cff; }
 .timeline-scroll { overflow: auto; scrollbar-color: #454b50 #191c1f; overscroll-behavior: contain; }
 .timeline-canvas { min-width: 100%; position: relative; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(255,255,255,.026) 5%); }
+.timeline-silence-marker { position: absolute; z-index: 9; top: 52%; width: 18px; height: 18px; padding: 0; border: 1px solid rgba(255,255,255,.92); border-radius: 50%; background: rgba(14,17,19,.22); box-shadow: 0 0 0 1px rgba(0,0,0,.42), 0 0 8px rgba(255,255,255,.18); transform: translate(-50%,-50%); cursor: pointer; }
+.timeline-silence-marker:hover, .timeline-silence-marker:focus-visible { border-width: 2px; background: rgba(255,255,255,.12); outline: 0; }
 .ruler { height: 34px; position: relative; background: #171a1d; border-bottom: 1px solid #2d3236; }
 .marker { position: absolute; top: 0; bottom: 0; border-left: 1px solid #3b4146; }
 .marker span { position: absolute; top: 10px; left: 5px; color: #6e757b; font: 8px ui-monospace, SFMono-Regular, monospace; }
@@ -417,6 +419,10 @@ svg .automation-point { stroke: #0c1111; stroke-width: 1.4; vector-effect: non-s
 .silence-list { max-height: 132px; overflow: auto; display: grid; gap: 3px; }
 .silence-list button { display: grid; grid-template-columns: 72px 45px minmax(0,1fr); gap: 8px; align-items: center; padding: 7px 9px; border: 0; border-radius: 4px; background: #202628; color: #aeb6b8; text-align: left; cursor: pointer; }
 .silence-list button:hover { background: #293134; }.silence-list time, .silence-list b { color: #efb260; font: 8px ui-monospace, monospace; }.silence-list span { overflow: hidden; font-size: 8px; white-space: nowrap; text-overflow: ellipsis; }
+.preexport-silence-check { margin: 12px 20px 0; padding: 11px 14px; border: 1px solid #3c4448; border-radius: 7px; background: #181d1f; }
+.preexport-silence-check > header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; color: #abb3b6; font-size: 8px; }
+.preexport-silence-check > header strong { color: #e7ac5f; }.preexport-silence-check > header span { color: #778085; font: 8px ui-monospace, monospace; }
+.preexport-silence-check .silence-list { margin-top: 8px; }
 .export-hash { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 8px; padding: 9px 14px; border-top: 1px solid #303839; color: #707a7e; font-size: 7px; }
 .export-hash code { overflow: hidden; color: #8e999d; white-space: nowrap; text-overflow: ellipsis; }
 .export-report .export-result { margin: 0; padding: 10px 14px; border-top: 1px solid #303839; }

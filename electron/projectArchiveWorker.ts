@@ -6,14 +6,14 @@ parentPort?.on('message', ({ payload, projectPath }: { payload: any; projectPath
   const temporaryPath = `${projectPath}.saving-${process.pid}`;
   const backupPath = `${projectPath}.previous-${process.pid}`;
   try {
-    writeProjectArchive(payload, temporaryPath);
+    writeProjectArchive(payload, temporaryPath, (completed, total) => parentPort?.postMessage({ type: 'progress', completed, total }));
     if (fs.existsSync(projectPath)) fs.renameSync(projectPath, backupPath);
     fs.renameSync(temporaryPath, projectPath);
     if (fs.existsSync(backupPath)) fs.unlinkSync(backupPath);
-    parentPort?.postMessage({ ok: true });
+    parentPort?.postMessage({ type: 'complete', ok: true });
   } catch (error) {
     try { if (fs.existsSync(temporaryPath)) fs.unlinkSync(temporaryPath); } catch { /* Best-effort cleanup. */ }
     try { if (fs.existsSync(backupPath) && !fs.existsSync(projectPath)) fs.renameSync(backupPath, projectPath); } catch { /* Keep backup for recovery. */ }
-    parentPort?.postMessage({ ok: false, error: error instanceof Error ? error.message : String(error) });
+    parentPort?.postMessage({ type: 'complete', ok: false, error: error instanceof Error ? error.message : String(error) });
   }
 });

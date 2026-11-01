@@ -6,12 +6,21 @@ import AdmZip from 'adm-zip';
 
 export const safeProjectName = (value: string) => value.replace(/[<>:"/\\|?*\u0000-\u001f]/g, '_').trim() || 'Untitled';
 
-export const writeProjectArchive = (payload: any, projectPath: string) => {
+export const writeProjectArchive = (payload: any, projectPath: string, onProgress?: (completed: number, total: number) => void) => {
   const zip = new AdmZip();
   const historyAssets = (payload.history?.entries || []).flatMap((entry: any) => entry.assets || []);
   const assetSources = new Map<string, any>();
   [...payload.assets, ...historyAssets].forEach((asset: any) => { if (!assetSources.has(asset.id)) assetSources.set(asset.id, asset); });
   const assetRegistry: any[] = [];
+  const historyQuarantine = (payload.history?.entries || []).flatMap((entry: any) => entry.quarantine || []);
+  const quarantineSources = new Map<string, any>();
+  [...(payload.quarantine || []), ...historyQuarantine].forEach((item: any) => {
+    if (!quarantineSources.has(item.id)) quarantineSources.set(item.id, item);
+  });
+  const totalSteps = Math.max(1, assetSources.size + quarantineSources.size + 2);
+  let completedSteps = 0;
+  const advance = () => onProgress?.(++completedSteps, totalSteps);
+  onProgress?.(0, totalSteps);
   for (const [index, asset] of [...assetSources.values()].entries()) {
     if (!asset.path || !fs.existsSync(asset.path)) throw new Error(`Missing audio source: ${asset.name}`);
     const tab = payload.libraryTabs.find((item: any) => item.id === asset.libraryTabId);
@@ -21,17 +30,13 @@ export const writeProjectArchive = (payload: any, projectPath: string) => {
     zip.addLocalFile(asset.path, path.posix.dirname(relativePath), path.posix.basename(relativePath));
     const { previewUrl: _previewUrl, path: _path, ...portableAsset } = asset;
     assetRegistry.push({ ...portableAsset, relativePath });
+    advance();
   }
   const portableAsset = (asset: any) => {
     const { previewUrl: _previewUrl, path: _path, waveform: _waveform, ...portable } = asset;
     return portable;
   };
   const manifestAssets = payload.assets.map((asset: any) => portableAsset(asset));
-  const historyQuarantine = (payload.history?.entries || []).flatMap((entry: any) => entry.quarantine || []);
-  const quarantineSources = new Map<string, any>();
-  [...(payload.quarantine || []), ...historyQuarantine].forEach((item: any) => {
-    if (!quarantineSources.has(item.id)) quarantineSources.set(item.id, item);
-  });
   const quarantineRegistry: any[] = [];
   for (const [index, item] of [...quarantineSources.values()].entries()) {
     if (!item.path || !fs.existsSync(item.path)) throw new Error(`Missing quarantined source: ${item.name}`);
@@ -40,6 +45,7 @@ export const writeProjectArchive = (payload: any, projectPath: string) => {
     zip.addLocalFile(item.path, path.posix.dirname(relativePath), path.posix.basename(relativePath));
     const { previewUrl: _previewUrl, path: _path, ...portableItem } = item;
     quarantineRegistry.push({ ...portableItem, relativePath });
+    advance();
   }
   const portableQuarantine = (item: any) => {
     const { previewUrl: _previewUrl, path: _path, ...portable } = item;
@@ -59,7 +65,9 @@ export const writeProjectArchive = (payload: any, projectPath: string) => {
   zip.addFile('Configuration/automation.json', Buffer.from(JSON.stringify(payload.automation, null, 2)));
   zip.addFile('Configuration/settings.json', Buffer.from(JSON.stringify({ settings: payload.settings, audioSettings: payload.audioSettings,
     editingPreferences: payload.editingPreferences, musicInsertion: payload.musicInsertion, voiceInsertion: payload.voiceInsertion }, null, 2)));
+  advance();
   zip.writeZip(projectPath);
+  advance();
 };
 
 export const readProjectArchive = (projectPath: string) => {

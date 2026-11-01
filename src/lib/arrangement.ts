@@ -80,7 +80,7 @@ export const voiceScheduleDuration = (assets: MediaAsset[], intervalMs: number, 
 export const intervalForVoiceDuration = (assets: MediaAsset[], targetDurationMs: number, allowOverlap: boolean): number => {
   if (!assets.length) return 0;
   let low = 0;
-  let high = 300_000;
+  let high = 1_200_000;
   for (let index = 0; index < 24; index += 1) {
     const middle = (low + high) / 2;
     if (voiceScheduleDuration(assets, middle, allowOverlap) <= targetDurationMs) low = middle;

@@ -195,6 +195,9 @@ export interface EditingPreferences {
   trimSilenceThresholdDb: number;
   trimSilencePaddingMs: number;
   trimSilenceMinimumMs: number;
+  detectExtendedSilence: boolean;
+  extendedSilenceThresholdDb: number;
+  extendedSilenceMinimumMs: number;
 }
 
 export interface QuarantineItem {
@@ -249,6 +252,7 @@ export interface ExportProgress {
   phase: ExportPhase;
   percent: number;
   detail?: string;
+  etaMs?: number;
 }
 
 export interface ExportSilenceIssue {

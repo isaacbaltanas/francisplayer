@@ -160,6 +160,12 @@ describe('arrangement engine', () => {
     expect(intervalForVoiceDuration(voices, duration, false)).toBeCloseTo(30_000, -2);
   });
 
+  it('supports voice intervals up to twenty minutes', () => {
+    const voices = [asset('v1', 'voice', 5_000), asset('v2', 'voice', 5_000)];
+    const duration = voiceScheduleDuration(voices, 1_200_000, false);
+    expect(intervalForVoiceDuration(voices, duration, false)).toBeCloseTo(1_200_000, -2);
+  });
+
   it('preserves a manually anchored voice while automatic voices reflow', () => {
     const before = createArrangement([], [asset('v1', 'voice', 5_000), asset('v2', 'voice', 5_000)], settings);
     before.voice[0] = { ...before.voice[0], startMs: 12_345, manuallyPositioned: true };

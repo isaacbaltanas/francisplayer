@@ -20,8 +20,14 @@ import { createConfigurationPreset, instantiateAutomationTemplate, isConfigurati
 import { dbToLinear, normalizationAdjustmentDb } from './lib/audio';
 import { configureRealtimeAudioGraph, createRealtimeAudioGraph, type RealtimeAudioGraph } from './lib/realtimeAudioGraph';
 import { anchoredScrollLeft, fitTimelineZoom, zoomFromPinch } from './lib/timelineZoom';
+import { detectTimelineSilences } from './lib/silenceDetection';
 import appIconUrl from '../assets/icon.svg';
-import type { Arrangement, ArrangementSettings, AudioSettings, AutomationPresetTemplate, AutomationState, ConfigurationPreset, EditingPreferences, ExportSettings, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
+import type { Arrangement, ArrangementSettings, AudioSettings, AutomationPresetTemplate, AutomationState, ConfigurationPreset, EditingPreferences, ExportSettings, ExportSilenceIssue, ImportLog, InsertionConfig, LibraryTab, LoudnessMeterReading, MediaAsset, MediaKind, QuarantineItem, TimelineClip } from './types';
+
+const seedFromCurrentMinute = (date = new Date()) => Number([
+  String(date.getDate()).padStart(2, '0'), String(date.getMonth() + 1).padStart(2, '0'), date.getFullYear(),
+  String(date.getHours()).padStart(2, '0'), String(date.getMinutes()).padStart(2, '0')
+].join(''));
 
 const defaultSettings: ArrangementSettings = {
   targetDurationMs: 74 * 60_000,
@@ -33,7 +39,7 @@ const defaultSettings: ArrangementSettings = {
   voicePlacement: 'interval',
   voiceIntervalMs: 30_000,
   allowVoiceOverlap: false,
-  seed: 2026
+  seed: seedFromCurrentMinute()
 };
 
 const defaultAudioSettings: AudioSettings = {
@@ -72,7 +78,10 @@ const defaultEditingPreferences: EditingPreferences = {
   trimSilenceEnabled: true,
   trimSilenceThresholdDb: -30,
   trimSilencePaddingMs: 80,
-  trimSilenceMinimumMs: 120
+  trimSilenceMinimumMs: 120,
+  detectExtendedSilence: true,
+  extendedSilenceThresholdDb: -50,
+  extendedSilenceMinimumMs: 3000
 };
 
 const acceptAudio = '.mp3,.wav,.wave,.m4a,.aac,.flac,.ogg,.oga,.opus,.aif,.aiff,.wma,audio/*';
@@ -355,10 +364,11 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
   const [presetName, setPresetName] = useState('');
   const targetMinutes = Math.round(settings.targetDurationMs / 60_000);
   const intervalSeconds = Math.round(settings.voiceIntervalMs / 1000);
-  const targetSliderMax = Math.max(360, Math.ceil(voiceScheduleDuration(voiceAssets, 300_000, settings.allowVoiceOverlap) / 60_000));
+  const minimumTargetMinutes = Math.max(1, Math.ceil(voiceScheduleDuration(voiceAssets, 0, settings.allowVoiceOverlap) / 60_000));
+  const targetSliderMax = Math.max(360, Math.ceil(voiceScheduleDuration(voiceAssets, 1_200_000, settings.allowVoiceOverlap) / 60_000));
   const changeTarget = (targetDurationMs: number) => onChange({
-    targetDurationMs,
-    voiceIntervalMs: intervalForVoiceDuration(voiceAssets, targetDurationMs, settings.allowVoiceOverlap)
+    targetDurationMs: Math.max(minimumTargetMinutes * 60_000, targetDurationMs),
+    voiceIntervalMs: intervalForVoiceDuration(voiceAssets, Math.max(minimumTargetMinutes * 60_000, targetDurationMs), settings.allowVoiceOverlap)
   });
   const changeInterval = (voiceIntervalMs: number) => onChange({
     voiceIntervalMs,
@@ -383,10 +393,10 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
     {tab === 'arrangement' && <div className="settings-grid">
       <label className="field full">
         <FieldLabel help={t('targetDurationHelp')}>{t('targetDuration')}</FieldLabel>
-        <div className="linked-range"><input type="range" min="1" max={targetSliderMax} step="1" value={targetMinutes}
-          onChange={(event) => changeTarget(Math.max(1, Math.round(Number(event.target.value))) * 60_000)} />
-        <div className="number-field"><input type="number" min="1" max={targetSliderMax} step="1" value={targetMinutes}
-          onChange={(event) => changeTarget(Math.max(1, Math.round(Number(event.target.value))) * 60_000)} />
+        <div className="linked-range"><input type="range" min={minimumTargetMinutes} max={targetSliderMax} step="1" value={Math.max(minimumTargetMinutes, targetMinutes)}
+          onChange={(event) => changeTarget(Math.max(minimumTargetMinutes, Math.round(Number(event.target.value))) * 60_000)} />
+        <div className="number-field"><input type="number" min={minimumTargetMinutes} max={targetSliderMax} step="1" value={Math.max(minimumTargetMinutes, targetMinutes)}
+          onChange={(event) => changeTarget(Math.max(minimumTargetMinutes, Math.round(Number(event.target.value))) * 60_000)} />
           <em>{t('minutes')}</em></div>
         </div>
       </label>
@@ -417,9 +427,9 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
 
       {settings.voicePlacement === 'interval' && <label className="field full">
         <FieldLabel help={t('intervalSecondsHelp')}>{t('intervalSeconds')}</FieldLabel>
-        <div className="linked-range"><input type="range" min="0" max="300" step="1" value={intervalSeconds}
+        <div className="linked-range"><input type="range" min="0" max="1200" step="1" value={intervalSeconds}
           onChange={(event) => changeInterval(Math.max(0, Math.round(Number(event.target.value))) * 1000)} />
-        <div className="number-field"><input type="number" min="0" max="300" step="1" value={intervalSeconds}
+        <div className="number-field"><input type="number" min="0" max="1200" step="1" value={intervalSeconds}
           onChange={(event) => changeInterval(Math.max(0, Math.round(Number(event.target.value))) * 1000)} />
           <em>{t('seconds')}</em></div>
         </div>
@@ -432,10 +442,6 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
           : { voiceIntervalMs: intervalForVoiceDuration(voiceAssets, settings.targetDurationMs, allowVoiceOverlap) })
       })} />
 
-      <label className="field seed-field">
-        <FieldLabel help={t('seedHelp')}>{t('seed')}</FieldLabel>
-        <input type="number" value={settings.seed} onChange={(event) => onChange({ seed: Number(event.target.value) || 1 })} />
-      </label>
       <div className="mount-priorities full">
         <strong><FieldLabel help={t('mountPrioritiesHelp')}>{t('mountPriorities')}</FieldLabel></strong>
         <ol><li>{t('priorityAllVoices')}</li><li>{t('priorityDuration')}</li><li>{t('priorityVoiceSpacing')}</li>
@@ -559,6 +565,17 @@ function SettingsPanel({ settings, audioSettings, automation, editingPreferences
         </button>
       </div>
       <p className="settings-help full">{t('silenceTrimHelp')}</p>
+      <div className="settings-divider full"><h3>{t('extendedSilenceDetection')}</h3></div>
+      <Toggle label={t('detectExtendedSilence')} help={t('detectExtendedSilenceHelp')} checked={editingPreferences.detectExtendedSilence}
+        onChange={(detectExtendedSilence) => onEditingPreferencesChange({ detectExtendedSilence })} />
+      <DbField label={t('exportSilenceThreshold')} help={t('extendedSilenceThresholdHelp')} value={editingPreferences.extendedSilenceThresholdDb}
+        min={-80} max={-10} onChange={(extendedSilenceThresholdDb) => onEditingPreferencesChange({ extendedSilenceThresholdDb })} />
+      <label className="field compact-field"><FieldLabel help={t('extendedSilenceDurationHelp')}>{t('exportSilenceDuration')}</FieldLabel>
+        <div className="number-field"><input type="number" min="0.1" max="600" step="0.5"
+          value={editingPreferences.extendedSilenceMinimumMs / 1000}
+          onChange={(event) => onEditingPreferencesChange({ extendedSilenceMinimumMs: Math.max(100, Math.round(Number(event.target.value) * 1000)) })} />
+          <em>{t('seconds')}</em></div></label>
+      <p className="settings-help full">{t('extendedSilenceTimelineHelp')}</p>
       <div className="shortcut-card full"><kbd>⇧ Shift</kbd><p>{t('musicRippleHint')}</p></div>
       <p className="settings-help">{t('integrityHelp')}</p>
       <p className="settings-help">{t('snapControlHint')}</p>
@@ -799,6 +816,7 @@ interface TimelineProps {
   meter: LoudnessMeterReading;
   automation: AutomationState | null;
   editingPreferences: EditingPreferences;
+  silenceIssues: ExportSilenceIssue[];
   canMount: boolean;
   onMount: () => void;
   onAutomationChange: (state: AutomationState) => void;
@@ -815,7 +833,7 @@ interface TimelineProps {
 }
 
 function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainDb, meter, automation, editingPreferences, canMount, onMount,
-  onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClips, onFadeChange, onSourceTrimChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
+  silenceIssues, onAutomationChange, onEditingPreferencesChange, onMoveClip, onRemoveClips, onFadeChange, onSourceTrimChange, onTabChange, onDropAsset, onPlay, onPause, onSeek }: TimelineProps) {
   const { t } = useTranslation();
   const [zoom, setZoom] = useState(1);
   const [snapGuideMs, setSnapGuideMs] = useState<number | null>(null);
@@ -986,6 +1004,14 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
           }}>
             <div className="ruler">{markers.map(marker => <div className="marker" key={marker}
               style={{ left: `${marker / arrangement.durationMs * 100}%` }}><span>{formatDuration(marker)}</span></div>)}</div>
+            {silenceIssues.map((issue, index) => {
+              const centerMs = issue.startMs + issue.durationMs / 2;
+              return <button className="timeline-silence-marker" key={`${issue.startMs}-${issue.endMs}-${index}`}
+                style={{ left: `${centerMs / arrangement.durationMs * 100}%` }}
+                title={t('timelineSilenceMarker', { time: formatDuration(issue.startMs, true), duration: formatDuration(issue.durationMs, true) })}
+                aria-label={t('timelineSilenceMarker', { time: formatDuration(issue.startMs, true), duration: formatDuration(issue.durationMs, true) })}
+                onClick={(event) => { event.stopPropagation(); onSeek(issue.startMs); }} />;
+            })}
             {timelineRows.map(row => <div className={`track ${row.tab.kind}-track ${row.laneCount > 1 ? 'overlap-lane' : ''}`} key={row.id}>
               {row.clips.map(clip => <TimelineClipView key={clip.id} clip={clip}
                   waveform={clip.assetId ? (waveforms.get(clip.assetId) ?? []) : []} overlapping={voiceOverlaps.has(clip.id)}
@@ -1034,6 +1060,7 @@ export default function App() {
   const [quarantineOpen, setQuarantineOpen] = useState(false);
   const [importLogOpen, setImportLogOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ completed: number; total: number } | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [trimmingVoices, setTrimmingVoices] = useState(false);
   const [settingsCollapsed, setSettingsCollapsed] = useState(() => localStorage.getItem('francis-settings-collapsed') === 'true');
@@ -1074,6 +1101,11 @@ export default function App() {
   const assetsRef = useRef<MediaAsset[]>([]);
   assetsRef.current = allAssets;
   const player = useTimelinePlayer(arrangement, allAssets, audioSettings, automation, libraryTabs);
+  const silenceIssues = useMemo(() => editingPreferences.detectExtendedSilence
+    ? detectTimelineSilences(arrangement, allAssets, audioSettings, editingPreferences.extendedSilenceThresholdDb,
+      editingPreferences.extendedSilenceMinimumMs)
+    : [], [arrangement, allAssets, audioSettings, editingPreferences.detectExtendedSilence,
+      editingPreferences.extendedSilenceThresholdDb, editingPreferences.extendedSilenceMinimumMs]);
   const occurrences = useMemo(() => {
     const counts = new Map<string, number>();
     if (!arrangement) return counts;
@@ -1099,6 +1131,8 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('francis-settings-collapsed', String(settingsCollapsed));
   }, [settingsCollapsed]);
+
+  useEffect(() => window.francisDesktop?.onProjectSaveProgress(setSaveProgress), []);
 
   useEffect(() => {
     localStorage.setItem(presetStorageKey, JSON.stringify(presets));
@@ -1162,11 +1196,15 @@ export default function App() {
 
   useEffect(() => {
     if (!scheduledVoiceSequence.length || settings.voicePlacement !== 'interval') return;
+    const minimumDurationMs = Math.ceil(voiceScheduleDuration(scheduledVoiceSequence, 0, settings.allowVoiceOverlap) / 60_000) * 60_000;
     const patch = settings.durationFromVoices
-      ? { targetDurationMs: voiceScheduleDuration(scheduledVoiceSequence, settings.voiceIntervalMs, settings.allowVoiceOverlap) }
-      : { voiceIntervalMs: intervalForVoiceDuration(scheduledVoiceSequence, settings.targetDurationMs, settings.allowVoiceOverlap) };
-    const [key, value] = Object.entries(patch)[0] as ['targetDurationMs' | 'voiceIntervalMs', number];
-    if (Math.abs(settings[key] - value) > 50) setSettings(current => ({ ...current, ...patch }));
+      ? { targetDurationMs: Math.max(minimumDurationMs, voiceScheduleDuration(scheduledVoiceSequence, settings.voiceIntervalMs, settings.allowVoiceOverlap)) }
+      : { targetDurationMs: Math.max(settings.targetDurationMs, minimumDurationMs),
+        voiceIntervalMs: intervalForVoiceDuration(scheduledVoiceSequence, Math.max(settings.targetDurationMs, minimumDurationMs), settings.allowVoiceOverlap) };
+    if ((patch.targetDurationMs !== undefined && Math.abs(settings.targetDurationMs - patch.targetDurationMs) > 50)
+      || (patch.voiceIntervalMs !== undefined && Math.abs(settings.voiceIntervalMs - patch.voiceIntervalMs) > 50)) {
+      setSettings(current => ({ ...current, ...patch }));
+    }
   }, [scheduledVoiceSequence, settings.durationFromVoices, settings.voicePlacement, settings.voiceIntervalMs, settings.targetDurationMs, settings.allowVoiceOverlap]);
 
   const status = useMemo(() => arrangement ? formatDuration(arrangement.durationMs) : t('projectReady'), [arrangement, t]);
@@ -1369,10 +1407,10 @@ export default function App() {
     }
   };
 
-  const buildArrangement = (nextSettings: ArrangementSettings) => {
+  const buildArrangement = (nextSettings: ArrangementSettings, nextMusicSequence = musicSequence, nextVoiceSequence = voiceSequence) => {
     stopPreview();
     player.reset();
-    const next = createArrangement(musicSequence, voiceSequence, nextSettings);
+    const next = createArrangement(nextMusicSequence, nextVoiceSequence, nextSettings);
     const showAutomationTrack = next.voice.length > 0 || editingPreferences.showAutomations;
     setArrangement(next);
     const baseAutomation = { ...createAutomationState(next, audioSettings),
@@ -1384,7 +1422,15 @@ export default function App() {
     }
   };
 
-  const mount = () => buildArrangement(settings);
+  const mount = () => {
+    const nextSettings = { ...settings, seed: seedFromCurrentMinute() };
+    const nextMusicSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'music'), music,
+      activeMusicTabId, musicInsertion, nextSettings.seed);
+    const nextVoiceSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'voice'), voices,
+      activeVoiceTabId, voiceInsertion, nextSettings.seed + 10_000);
+    setSettings(nextSettings);
+    buildArrangement(nextSettings, nextMusicSequence, nextVoiceSequence);
+  };
 
   const rebuildAfterVoiceEdit = (nextVoices: MediaAsset[], preserveManualSourceTrims = false) => {
     const nextVoiceSequence = createInsertionSequence(libraryTabs.filter(tab => tab.kind === 'voice'), nextVoices,
@@ -1615,7 +1661,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.35.0', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.37.2', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });
@@ -1674,7 +1720,7 @@ export default function App() {
 
   const saveProject = async (saveAs = false): Promise<boolean> => {
     if (!window.francisDesktop || isSaving) return false;
-    setIsSaving(true);
+    setIsSaving(true); setSaveProgress({ completed: 0, total: 1 });
     try {
       const document = projectDocument();
       const savedPath = await window.francisDesktop.saveProject(document, saveAs ? undefined : projectPath);
@@ -1691,7 +1737,7 @@ export default function App() {
       setError(t('projectSaveError'));
       return false;
     } finally {
-      setIsSaving(false);
+      setIsSaving(false); setSaveProgress(null);
     }
   };
 
@@ -1979,7 +2025,7 @@ export default function App() {
           onImportPreset={() => void importConfigurationPreset()} />
       </div>
       <Timeline arrangement={arrangement} tabs={libraryTabs} assets={allAssets} isPlaying={player.isPlaying || player.isPreparing} positionMs={player.positionMs}
-        musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences}
+        musicGainDb={player.musicGainDb} meter={player.meter} automation={automation} editingPreferences={editingPreferences} silenceIssues={silenceIssues}
         canMount={music.length + voices.length > 0} onMount={mount}
         onAutomationChange={setAutomation}
         onEditingPreferencesChange={(patch) => setEditingPreferences(current => ({ ...current, ...patch }))}
@@ -1988,15 +2034,21 @@ export default function App() {
         onPlay={() => { stopPreview(); player.play(); }}
         onPause={player.pause} onSeek={player.seek} />
     </main>
-    <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)} onClose={() => setExportOpen(false)} onExport={exportAudio}
+    <ExportDialog open={exportOpen} canExport={Boolean(arrangement && allAssets.length)}
+      silenceDetection={{ enabled: editingPreferences.detectExtendedSilence, thresholdDb: editingPreferences.extendedSilenceThresholdDb,
+        minimumMs: editingPreferences.extendedSilenceMinimumMs }} preflightSilences={silenceIssues} durationMs={arrangement?.durationMs ?? 0}
+      onClose={() => setExportOpen(false)} onExport={exportAudio}
       onSeek={(positionMs) => { player.seek(positionMs); setExportOpen(false); }} />
     <QuarantineDialog open={quarantineOpen} items={quarantine} onClose={() => setQuarantineOpen(false)} onAdmit={admitFromQuarantine} />
     <ImportLogDialog open={importLogOpen} logs={importLogs} onClose={() => setImportLogOpen(false)} />
-    {(error || importProgressJobs.length > 0) && <div className="toast-stack" aria-live="polite">
+    {(error || isSaving || importProgressJobs.length > 0) && <div className="toast-stack" aria-live="polite">
       {error && <div className="app-toast error-toast"><strong>{t('warning')}</strong>
         <button onClick={() => setError(null)} aria-label={t('close')}>×</button><span>{error}</span></div>}
       {importProgressJobs.map(job => <div className="app-toast import-progress-toast" key={job.id}><strong>{job.label}</strong>
         <span>{job.completed} / {job.total}</span><i><b style={{ width: `${job.total ? job.completed / job.total * 100 : 0}%` }} /></i></div>)}
+      {isSaving && <div className="app-toast import-progress-toast save-progress-toast"><strong>{t('savingProject')}</strong>
+        <span>{Math.round((saveProgress?.completed ?? 0) / Math.max(1, saveProgress?.total ?? 1) * 100)}%</span>
+        <i><b style={{ width: `${(saveProgress?.completed ?? 0) / Math.max(1, saveProgress?.total ?? 1) * 100}%` }} /></i></div>}
     </div>}
   </div>;
 }

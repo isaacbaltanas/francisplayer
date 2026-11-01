@@ -16,6 +16,11 @@ contextBridge.exposeInMainWorld('francisDesktop', {
   platform: process.platform,
   getPathForFile: (file: File) => webUtils.getPathForFile(file),
   saveProject: (payload: unknown, projectPath?: string) => ipcRenderer.invoke('project:save', payload, projectPath),
+  onProjectSaveProgress: (callback: (progress: { completed: number; total: number }) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: { completed: number; total: number }) => callback(progress);
+    ipcRenderer.on('project:save-progress', listener);
+    return () => ipcRenderer.removeListener('project:save-progress', listener);
+  },
   openProject: (projectPath?: string) => ipcRenderer.invoke('project:open', projectPath),
   confirmUnsavedChanges: (language: string) => ipcRenderer.invoke('project:confirm-unsaved', language),
   exportPreset: (preset: unknown) => ipcRenderer.invoke('preset:export', preset),
