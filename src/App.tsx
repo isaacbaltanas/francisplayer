@@ -80,8 +80,8 @@ const defaultEditingPreferences: EditingPreferences = {
   trimSilencePaddingMs: 80,
   trimSilenceMinimumMs: 120,
   detectExtendedSilence: true,
-  extendedSilenceThresholdDb: -50,
-  extendedSilenceMinimumMs: 3000
+  extendedSilenceThresholdDb: -40,
+  extendedSilenceMinimumMs: 2000
 };
 
 const acceptAudio = '.mp3,.wav,.wave,.m4a,.aac,.flac,.ogg,.oga,.opus,.aif,.aiff,.wma,audio/*';
@@ -1010,7 +1010,7 @@ function Timeline({ arrangement, tabs, assets, isPlaying, positionMs, musicGainD
                 style={{ left: `${centerMs / arrangement.durationMs * 100}%` }}
                 title={t('timelineSilenceMarker', { time: formatDuration(issue.startMs, true), duration: formatDuration(issue.durationMs, true) })}
                 aria-label={t('timelineSilenceMarker', { time: formatDuration(issue.startMs, true), duration: formatDuration(issue.durationMs, true) })}
-                onClick={(event) => { event.stopPropagation(); onSeek(issue.startMs); }} />;
+                onClick={(event) => { event.stopPropagation(); onSeek(issue.startMs); }}>!</button>;
             })}
             {timelineRows.map(row => <div className={`track ${row.tab.kind}-track ${row.laneCount > 1 ? 'overlap-lane' : ''}`} key={row.id}>
               {row.clips.map(clip => <TimelineClipView key={clip.id} clip={clip}
@@ -1661,7 +1661,7 @@ export default function App() {
   };
 
   const currentSnapshot = (): ProjectSnapshot => ({
-    name: projectName, version: '0.37.3', settings, audioSettings, editingPreferences, libraryTabs,
+    name: projectName, version: '0.37.4', settings, audioSettings, editingPreferences, libraryTabs,
     activeMusicTabId, activeVoiceTabId, musicInsertion, voiceInsertion, arrangement, automation, assets: allAssets,
     quarantine, importLogs
   });

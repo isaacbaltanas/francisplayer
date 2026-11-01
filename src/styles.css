@@ -298,8 +298,8 @@ main.settings-collapsed { --settings-width: 48px; }
 .track-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 7px; }.voice-dot { background: #de6ea8; }.music-dot { background: #4f8cff; }
 .timeline-scroll { overflow: auto; scrollbar-color: #454b50 #191c1f; overscroll-behavior: contain; }
 .timeline-canvas { min-width: 100%; position: relative; background: repeating-linear-gradient(90deg, transparent 0, transparent calc(5% - 1px), rgba(255,255,255,.026) 5%); }
-.timeline-silence-marker { position: absolute; z-index: 9; top: 52%; width: 18px; height: 18px; padding: 0; border: 1px solid rgba(255,255,255,.92); border-radius: 50%; background: rgba(14,17,19,.22); box-shadow: 0 0 0 1px rgba(0,0,0,.42), 0 0 8px rgba(255,255,255,.18); transform: translate(-50%,-50%); cursor: pointer; }
-.timeline-silence-marker:hover, .timeline-silence-marker:focus-visible { border-width: 2px; background: rgba(255,255,255,.12); outline: 0; }
+.timeline-silence-marker { position: absolute; z-index: 9; top: 17px; width: 19px; height: 17px; padding: 4px 0 0; border: 0; background: #f0a24b; clip-path: polygon(50% 0, 100% 100%, 0 100%); color: #17191b; font: 900 10px/1 ui-sans-serif, system-ui, sans-serif; text-align: center; filter: drop-shadow(0 1px 1px #000) drop-shadow(0 0 4px rgba(240,162,75,.55)); transform: translate(-50%,-50%); cursor: pointer; }
+.timeline-silence-marker:hover, .timeline-silence-marker:focus-visible { background: #ffd08a; filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 7px #f0a24b); outline: 0; }
 .ruler { height: 34px; position: relative; background: #171a1d; border-bottom: 1px solid #2d3236; }
 .marker { position: absolute; top: 0; bottom: 0; border-left: 1px solid #3b4146; }
 .marker span { position: absolute; top: 10px; left: 5px; color: #6e757b; font: 8px ui-monospace, SFMono-Regular, monospace; }
